@@ -1,13 +1,35 @@
 package v1alpha1
 
 import (
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ObjectBucketClaimSpec defines the desired state of ObjectBucketClaim
 type ObjectBucketClaimSpec struct {
-	StorageClass string
+	// BucketName (not recommended) the name of the bucket.  Caution!
+	// In-store bucket names may collide across namespaces.  If you define
+	// the name yourself, try to make it as unique as possible.
+	BucketName string `json:"bucketName,omityempty"`
+	// GenerateBucketName (recommended) a prefix for a bucket name to be
+	// followed by a hyphen and 5 random characters. Protects against
+	// in-store name collisions.
+	GeneratBucketName string `json:"generatBucketName,omitempty"`
+	// SSL whether connection to the bucket requires SSL authentication or not
+	SSL bool `json:"ssl"`
+	// AWS S3 predefined bucket ACLs.
+	// Available BucketCannedACLs are:
+	//    BucketCannedACLPrivate
+	//    BucketCannedACLPublicRead
+	//    BucketCannedACLPublicReadWrite
+	//    BucketCannedACLAuthenticatedRead
+	CannedBucketACL s3.BucketCannedACL `json:"cannedBucketAcl"`
+	// Versioned determines if versioning is enabled
+	Versioned bool `json:"versioned"`
+	// AdditionalConfig gives non-AWS S3 providers a location to set
+	// proprietary config values (tenant, namespace, etc)
+	AdditionalConfig map[string]interface{} `json:"additionalConfig"`
 }
 
 type ObjectBucketClaimStatusPhase string
@@ -22,8 +44,6 @@ const (
 type ObjectBucketClaimStatus struct {
 	Phase           ObjectBucketClaimStatusPhase
 	ObjectBucketRef *v1.ObjectReference
-	ConfigMapRef    *v1.ObjectReference
-	SecretRef       *v1.SecretReference
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

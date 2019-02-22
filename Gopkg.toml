@@ -13,3 +13,7 @@ required = [
   name = "k8s.io/code-generator"
   # revision for tag "kubernetes-1.12.3"
   revision = "3dcf91f64f638563e5106f21f50c31fa361c918d"
+
+[[constraint]]
+  name = "github.com/aws/aws-sdk-go-v2"
+  version = "0.7.0"

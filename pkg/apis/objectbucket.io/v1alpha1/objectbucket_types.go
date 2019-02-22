@@ -1,11 +1,10 @@
 package v1alpha1
 
 import (
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-type ObjectBucketSource struct{}
 
 // ObjectBucketSpec defines the desired state of ObjectBucket.
 // Fields defined here should be normal among all S3 providers.
@@ -22,9 +21,12 @@ type ObjectBucketSpec struct {
 	SecurePort int `json:"securePort"`
 	// SSL true if the connection is secured with SSL, false if it is not.
 	SSL bool `json:"ssl"`
-
+	// BucketACL
+	CannedBucketACL s3.BucketCannedACL `json:"bucketAcl"`
 	// Versioned true if the object store support versioned buckets, false if not
 	Versioned bool `json:"versioned,omitempty"`
+	// ProviderConfig is map for non-AWS providers to set non-standard configs (tenant, namespace, etc.)
+	ProviderConfig map[string]interface{} `json:"providerConfig,omitempty"`
 }
 
 type ObjectBucketStatusPhase string
@@ -37,7 +39,9 @@ const (
 
 // ObjectBucketStatus defines the observed state of ObjectBucket
 type ObjectBucketStatus struct {
-	Controller *v1.ObjectReference
+	Controller *v1.LocalObjectReference
+	Phase      ObjectBucketClaimStatusPhase
+	Conditions v1.ConditionStatus
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
