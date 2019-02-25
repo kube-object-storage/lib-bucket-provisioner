@@ -1,11 +1,15 @@
 ## Generic Bucket Provisioning
-
 Kubernetes natively supports dynamic provisioning for many types of file and
 block storage, but lacks support for object bucket provisioning. 
 This repo is a temporary placeholder for an object store bucket provisioning library,
 very similar to the Kubernetes 
 [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go)
 library. The goal is to eventually move this repo to a Kubernetes repo within _sig-storage/_.
+
+### Assumptions
+1. The object store is represented by a Kubernetes service.
+1. _Brownfield_, meaning existing, legacy buckets, is not supported (yet). _New_, dynamic
+bucket provisioning is the focus of this proposal.
 
 ### Design
 The time has come where we can support a bucket provisioning API similar to that used for
@@ -38,7 +42,9 @@ OBCs that it knows how to provision and skips the rest. In this proposal, the bu
 provisioners will be simple-to-write operators because the bucket provisioning lib
 handles the bulk of the work. Each provisioner is only responsible for writing
 `Provision()` and `Delete()`functions (the _business logic_) and a short `main()`
-function. **Note:** even though the PV-PVC design supports static provisioning, only
+function.
+
+**Note:** even though the PV-PVC design supports static provisioning, only
 dynamic provisioning is supported by the bucket lib.
 
 The `Provision()` and `Delete()`functions are interfaces defined in the bucket library.
@@ -50,30 +56,22 @@ ConfigMap name and fields. The app pod will not run until the bucket has been pr
 and can be accessed. This is true even if the pod is created prior to the OBC.
 
 ### Binding
-
 Bucket binding requires these steps before the bucket is accessible to an app pod:
-1. the creation of the physical bucket with the correct owner access key-pairs. This 
-is done by each object store provisioner,
-1. the creation of user access key-pairs, in the form of a Secret, granting the app
-pod full access to this bucket (but not the ability to create new buckets). This is
-done by the bucket library,
-1. the creation of a ConfigMap which defines the endpoint of this bucket. Also done
+1. the creation of the physical bucket with owner credentials. This step is required
+by each object store provisioner,
+1. the creation of a Secret, based on the provisioner's returned credentials, residing
+in the OBC's namespace. This is done by the bucket library,
+1. the creation of a ConfigMap which contains the endpoint of the bucket. Also done
 by the bucket lib,
-1. the creation of an OB watch/reconciler so that the actual-state-of-the-world is
-refected in the OB. Done by the bucket lib.
 
 `Bound` is one of the supported phases of an OB and OBC. `Bound` indicates that a
 bucket and all related artifacts have been created on behalf of the OBC.
 
-The credentials necessary to create a bucket need to be defined in an object
-store specific Secret, which must be the only secret in the object store's
-namespace. These credentials must grant CREATE access to the object store. The
-bucket lib will generate a user-based Secret which grants all access except the
-ability to CREATE buckets. The motivation here is to prevent an OBC author from
-using the generated access key to create buckets outside of Kubernetes. 
+**Note:** bucket provisioners that wish to prevent the OBC author from creating
+buckets outside of the Kubernetes cluster should return credentials lacking
+CREATE access.
 
 ### Bucket Deletion
-
 Contsistent with PVCs, an OBC can be deleted but the underlying bucket is not removed due
 to concerns with deleting objects that cannot be easily recovered. However, OBC deletion
 triggers cleanup of the Kubernetes resources created on behalf of the bucket: the
@@ -100,7 +98,6 @@ ConfigMap in order to access the bucket. Since more than one pod can ingest the 
 Secert and ConfigMap, a bucket can be shared. _TODO: verify._
 
 ### Quota
-
 S3 bucket size cannot be specified; however, bucket size can be monitored in S3. The number
 of buckets can be controlled by a resource quota once
 [this k8s pr](https://github.com/kubernetes/kubernetes/pull/72384) is merged. Until then, 
@@ -110,7 +107,6 @@ number of buckets.
 ## API Specifications (subject to change)
 
 ### OBC Custom Resource Definition
-
 ```yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
@@ -130,8 +126,7 @@ spec:
 ```
 
 ### OBC Custom Resource (User Defined)
-
- ```yaml
+```yaml
 apiVersion: objectbucket.s3.io/v1alpha1
 kind: ObjectBucketClaim
 metadata:
@@ -142,16 +137,15 @@ spec:
   tenant: MY-TENANT [4]
 ```
 1. name of the ObjectBucketClaim. This name becomes part of the bucket and ConfigMap names.
-1. namespace of the ObjectBucketClaim. Determines the namespace of the ConfigMap and user 
-Secret. Also becomes part of the unique bucket name.
+1. namespace of the ObjectBucketClaim. Determines the namespace of the ConfigMap and Secret.
+Also becomes part of the unique bucket name.
 1. storageClassName is used to target the desired Object Store. Used by the operator to get
 the Object Store service URL.
 1. tenant allows users to define a tenant in an object store in order to namespace their buckets
 and access keys.
 
 ### OBC Custom Resource (Status Updated)
-
- ```yaml
+```yaml
 apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucketClaim
 ...
@@ -171,8 +165,7 @@ status:
 1. `secretRef` is an objectReference to the generated Secret
 
 ### OB Custom Resource Definition
-
- ```yaml
+```yaml
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
@@ -191,8 +184,7 @@ spec:
 ```
 
  ### Generated OB Custom Resource
-
- ```yaml
+```yaml
 apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucket
 metadata:
@@ -220,8 +212,7 @@ status:
     - _lost_: the OBC has been deleted, leaving the OB unclaimed
 
 ### Generated Secret for User Access (sample for rook-ceph provider)
-
- ```yaml
+```yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -242,8 +233,7 @@ data:
 1. `ownerReference` makes this secret a child of the originating OBC for clean up purposes
 
 ### Generated ConfigMap (sample for rook-ceph provider)
-
- ```yaml
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -270,8 +260,7 @@ data:
 1. `S3_BUCKET_SSL` boolean representing SSL connection
 
 ### StorageClass (sample for rook-ceph-rgw provider)
-
- ```yaml
+```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -291,7 +280,6 @@ parameters:
 1. `region` (optional) defines a region of the object store
 
 ## Bucket Methods and Structs
-
 ```golang
 // Provisioner the interface to be implemented by users of this
 // library and executed by the Reconciler
@@ -383,4 +371,3 @@ const (
 	ObjectBucketClaimStatusPhaseLost    = "lost"
 )
 ```
-
