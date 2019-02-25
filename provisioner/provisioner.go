@@ -3,8 +3,8 @@ package provisioner
 import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner/claim-reconciler"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner/object-bucket-reconciler"
+	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/object-bucket-reconciler"
+	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/claim-reconciler"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -98,7 +98,7 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provis
 	//  not be what we ultimately want.
 	if err = builder.ControllerManagedBy(c.manager).
 		For(&v1alpha1.ObjectBucket{}).
-		Complete(&object_bucket_reconciler.ObjectBucketReconciler{rc}); err != nil {
+		Complete(&bucketReconciler.ObjectBucketReconciler{rc}); err != nil {
 		return nil, err
 	}
 

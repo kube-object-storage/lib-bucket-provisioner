@@ -3,7 +3,7 @@ package object_bucket_claim_reconciler
 import (
 	"context"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	. "github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner/reconciler-defaults"
+	. "github.com/yard-turkey/lib-bucket-provisioner/provisioner/reconciler-defaults"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
