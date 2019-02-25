@@ -20,12 +20,12 @@ provisioner needs to adhere to the inferfaces defined in the bucket library.
 An `ObjectBucketClaim` (OBC) is similar in usage to a Persistent Volume Claim
 and an `ObjectBucket` (OB) is the Persistent Volume equivalent. 
 Bucket binding refers to the actual bucket being created by the underlying object
-store provide, and the generation of artifacts which will be consumed by application pods.
+store provider, and the generation of artifacts which will be consumed by application pods.
 An OBC is namespaced and references a storage class which defines the object store. The
-details of the object store (ceph, minio, cloud, on-prem) are not visible to the app pod
-and can change without disturbing the app in anyway. An OB is non-namespaced (global),
-typically not visible to end users, and will contain info pertinent to the provisioned
-bucket. Like PVs, there is a 1:1 binding of an OBC to an OB.
+details of the object store (ceph, minio, cloud, on-prem) are not visible to the app pod.
+The same app can consume AWS S3 in the cloud or Ceph-RGW on-prem with no changes.
+An OB is non-namespaced (global), typically not visible to end users, and will contain
+info pertinent to the provisioned bucket. Like PVs, there is a 1:1 binding of an OBC to an OB.
 
 As is true for dynamic PV provisioning, a bucket provisioner needs to be running
 for each object store supported by the Kubernetes cluster. For example, if the
@@ -42,14 +42,12 @@ function. **Note:** even though the PV-PVC design supports static provisioning, 
 dynamic provisioning is supported by the bucket lib.
 
 The `Provision()` and `Delete()`functions are interfaces defined in the bucket library.
-All bucket provisioners are required to return an OB struct and the bucket
-credentials (access-key, endpoint) as defined in the bucket lib. Based on the returned
-OB, the lib will create the bucket artifacts: user Secret, user ConfigMap, and OB
-controller (primarily for status updates). The Secret and ConfigMap have deterministic
-names, namespaces, and property keys. An app pod consuming a bucket need only be aware
-of the Secret name and keys, and the ConfigMap name and fields. The app pod will not
-run until the bucket has been provisioned and can be accessed. This is true even if
-the pod is created prior to the OBC.
+All bucket provisioners are required to return an OB struct (which is used to
+construct the ConfigMap) and the bucket credentials (which are used to create the
+Secret).The Secret and ConfigMap have deterministic names, namespaces, and property keys.
+An app pod consuming a bucket need only be aware of the Secret name and keys, and the
+ConfigMap name and fields. The app pod will not run until the bucket has been provisioned
+and can be accessed. This is true even if the pod is created prior to the OBC.
 
 ### Binding
 
@@ -76,23 +74,18 @@ using the generated access key to create buckets outside of Kubernetes.
 
 ### Bucket Deletion
 
-An OBC can be deleted but the underlying bucket is not removed, in this POC phase, due
-to concerns of deleting objects that cannot be easily recovered. However, OBC deletion
-triggers cleanup of Kubernetes resources created on behalf of the bucket, including
-the Secret and ConfigMap. Since the physical bucket is not deleted neither is the OB,
+Contsistent with PVCs, an OBC can be deleted but the underlying bucket is not removed due
+to concerns with deleting objects that cannot be easily recovered. However, OBC deletion
+triggers cleanup of the Kubernetes resources created on behalf of the bucket: the
+Secret and ConfigMap. Since the physical bucket is not deleted neither is the OB,
 which represents this bucket. The OB's status will indicate that the related OBC
 has been deleted so that an admin has better visibility into buckets that are missing
 their connection information.
 
-The generated OB's `ownerReference` is set to the object store, not to the OBC.
+The generated OB's `ownerReference` is set to the object store service, not to the OBC.
 This allows an OBC to be deleted while preserving the OB. When the object store
 service is deleted all OBs belonging to that object store will be automatically
 deleted by Kubernetes due to the `ownerReference` setting.
-
-**Note:** it is an expected enhancement to support a Storage Class' _reclaimPolicy_,
-but for this POC phase, the safest approach is to ignore this policy and not delete
-the bucket. Once _reclaimPolicy_ is supported an OB's `ownerReference` will need to
-be set to the OBC if the the policy is to delete the bucket.
 
 **Note:** the bucket library has no mechanism to prevent an OBC from being deleted when one or
 more pods indirectly reference the OBC via the Secret and ConfigMap. This concept came late
@@ -101,12 +94,10 @@ for PVCs, see
 difficult to implement for OBCs.
 
 ### Bucket Sharing
-
-Env though there is a 1:1 mapping of an OBC and OB, a bucket can still be shared,
-at least within the same namespace. The reason for this is because the app pods never
-reference the OBC (or OB) directly, but instead consume a Secret and ConfigMap in
-order to access the bucket. Since more than one pod can ingest the same Secert and
-ConfigMap, a bucket can be shared. _TODO: verify._
+A bucket can be shared, at least within the same namespace. The reason for this is that
+the app pods never reference the OBC (or OB) directly, but instead consume a Secret and
+ConfigMap in order to access the bucket. Since more than one pod can ingest the same 
+Secert and ConfigMap, a bucket can be shared. _TODO: verify._
 
 ### Quota
 
@@ -116,7 +107,7 @@ of buckets can be controlled by a resource quota once
 Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the 
 number of buckets.
 
-## API Specifications
+## API Specifications (subject to change)
 
 ### OBC Custom Resource Definition
 
@@ -124,9 +115,9 @@ number of buckets.
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: objectbucketclaims.store-operator.s3
+  name: objectbucketclaims.objectbucket.io
 spec:
-  group: store-operator.s3
+  group: objectbucket.io
   names:
     kind: ObjectBucketClaim
     listKind: ObjectBucketClaimList
@@ -161,7 +152,7 @@ and access keys.
 ### OBC Custom Resource (Status Updated)
 
  ```yaml
-apiVersion: store-operator.s3/v1alpha1
+apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucketClaim
 ...
 status:
@@ -185,9 +176,9 @@ status:
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: objectbuckets.store-operator.s3
+  name: objectbuckets.objectbucket.io
 spec:
-  group: store-operator.s3
+  group: objectbucket.io
   names:
     kind: ObjectBucket
     listKind: ObjectBucketList
@@ -202,7 +193,7 @@ spec:
  ### Generated OB Custom Resource
 
  ```yaml
-apiVersion: store-operator.s3/v1alpha1
+apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucket
 metadata:
   name: object-bucket-claim-MY-BUCKET-1
