@@ -3,8 +3,8 @@ package provisioner
 import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/object-bucket-reconciler"
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/claim-reconciler"
+	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/object-bucket-reconciler"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -23,7 +23,7 @@ type S3AccessKeys struct {
 type Provisioner interface {
 	// Provision should be implemented to handle bucket creation
 	// for the target object store
-	Provision(*v1alpha1.ObjectBucketClaim) (*v1alpha1.ObjectBucketClaim, *S3AccessKeys, error)
+	Provision(*v1alpha1.ObjectBucketClaim) (*v1alpha1.ObjectBucket, *S3AccessKeys, error)
 	// Delete should be implemented to handle bucket deletion
 	// for the target object store
 	Delete(claim *v1alpha1.ObjectBucketClaim) error

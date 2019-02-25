@@ -8,6 +8,8 @@ import (
 
 // ObjectBucketClaimSpec defines the desired state of ObjectBucketClaim
 type ObjectBucketClaimSpec struct {
+	// StorageClass names the StorageClass object representing the desired provisioner and parameters
+	StorageClass string
 	// BucketName (not recommended) the name of the bucket.  Caution!
 	// In-store bucket names may collide across namespaces.  If you define
 	// the name yourself, try to make it as unique as possible.
