@@ -1,6 +1,7 @@
 package provisioner
 
 import (
+	"github.com/go-logr/logr"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/claim-reconciler"
@@ -12,11 +13,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"time"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type S3AccessKeys struct {
-	AccessKey, SecretKey string
-}
+var log = logr.Logger.WithName()
 
 // Provisioner the interface to be implemented by users of this
 // library and executed by the Reconciler
@@ -29,11 +29,26 @@ type Provisioner interface {
 	Delete(claim *v1alpha1.ObjectBucketClaim) error
 }
 
-// BucketProvisionerController is the first iteration of our internal
+type S3AccessKeys struct {
+	AccessKey, SecretKey string
+}
+
+func (k *S3AccessKeys)AreValid() bool {
+	return k.AccessKey != "" && k.SecretKey != ""
+}
+
+func (k *S3AccessKeys)ToSecret(keys *S3AccessKeys) *v1.Secret {
+	return &v1.Secret{
+		ObjectMeta: *metav1.ObjectMeta{}
+	}
+}
+
+// TODO enable user configuration + NewDefault func + option struct
+// bucketProvisionerController is the first iteration of our internal
 // provisioning controller.  The passed-in bucket provisioner,
 // coded by the user of the library, is stored for later
 // Provision and Delete calls.
-type BucketProvisionerController struct {
+type bucketProvisionerController struct {
 	// provisionerName should exactly match the `provisioner:` field of the storageClass(es)
 	// respective of this controller
 	provisionerName string
@@ -51,11 +66,11 @@ type BucketProvisionerController struct {
 // instantiate a new provisioning controller. This controller will
 // respond to Add / Update / Delete events by calling the passed-in
 // provisioner's Provisioner and Delete methods.
-func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provisioner) (*BucketProvisionerController, error) {
+func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provisioner) (*bucketProvisionerController, error) {
 
 	var err error
 
-	c := &BucketProvisionerController{
+	c := &bucketProvisionerController{
 		provisionerName: provisionerName,
 		provisioner:     provisioner,
 	}
@@ -87,8 +102,8 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provis
 		For(&v1alpha1.ObjectBucketClaim{}).
 		Owns(&v1.ConfigMap{}).
 		Owns(&v1.Secret{}).
-		Complete(claimReconciler.NewDefaultObjectBucketClaimReconciler(
-			rc, provisionerName)); err != nil {
+		Complete(claimReconciler.NewDefaultObjectBucketClaimReconciler(rc, provisionerName, provisioner));
+		err != nil {
 		return nil, err
 	}
 
@@ -107,7 +122,7 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provis
 }
 
 // Run starts the claim and bucket controllers.
-func (p *BucketProvisionerController) Run() {
+func (p *bucketProvisionerController) Run() {
 	// TODO this seems like it's too high level to start the go thread but I don't see
 	//  how to do it within the manager or controller.
 	for i := 0; i < p.threadiness; i++ {
