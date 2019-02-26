@@ -5,80 +5,109 @@ import (
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/provisioner"
-	. "github.com/yard-turkey/lib-bucket-provisioner/provisioner/reconciler-defaults"
-	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/api/storage/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"strings"
 	"time"
 )
 
-const (
-	provisionerFinalizer string = "object-bucket-claims.lib-bucket-provisioner/finalizer"
-)
-
-type ObjectBucketClaimReconciler struct {
-	Client            client.Client
-	ProvisionerName   string
-	Provisioner       provisioner.Provisioner
-	SyncOBCInterval   time.Duration
-	SyncOBCTimeout    time.Duration
-	SyncOBCMaxRetries int
+type objectBucketClaimReconciler struct {
+	client          client.Client
+	provisionerName string
+	provisioner     provisioner.Provisioner
+	retryInterval   time.Duration
+	retryTimeout    time.Duration
+	retryBackoff    int
 }
 
-var _ reconcile.Reconciler = &ObjectBucketClaimReconciler{}
+var _ reconcile.Reconciler = &objectBucketClaimReconciler{}
 
-func NewDefaultObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner) *ObjectBucketClaimReconciler {
-	return &ObjectBucketClaimReconciler{
-		Client:            c,
-		ProvisionerName:   name,
-		SyncOBCInterval:   DefaultRetryInterval,
-		SyncOBCTimeout:    DefaultRetryTimeout,
-		SyncOBCMaxRetries: DefaultConditionRetryMax,
+type ReconcilerOptions struct {
+	RetryInterval time.Duration
+	RetryTimeout  time.Duration
+	RetryBackoff  int
+}
+
+func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner, options ReconcilerOptions) *objectBucketClaimReconciler {
+	return &objectBucketClaimReconciler{
+		client:          c,
+		provisionerName: strings.ToLower(name),
+		provisioner:     provisioner,
+		retryInterval:   options.RetryInterval,
+		retryTimeout:    options.RetryTimeout,
+		retryBackoff:    options.RetryBackoff,
 	}
 }
 
 // TODO this is the guts of our controller.
 //   `request` is a 'namespace/name' of a resource.
-func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+	// /   ///   ///   ///   ///   ///   ///
+	// TODO    CAUTION! UNDER CONSTRUCTION!
+	// /   ///   ///   ///   ///   ///   ///
+	// This process should basically
+	// 1. get the claim resource
+	// 2. get the class for the claim
+	// 3. verify the class.provisioner matches this provisioner name
+	// 4. attempt to provision the bucket
+	// 5. create the OB returned from Provision()
+	// 6. create the secret and config map in the OBC namespace
 
 	obc := &v1alpha1.ObjectBucketClaim{}
 
-	// The controller-runtime client simplifies gets from the cache for object keys (namespace/name strings).  If the object exists, it's copied into `obc`
-	// TODO i'm pretty sure this is an API client rather than a cache client, so Get is an API call.  May need to look at making a composite client.
-	// TODO handle apierror.NotFound
-	if err := r.Client.Get(context.TODO(), request.NamespacedName, obc); err != nil {
+	if err := r.client.Get(context.TODO(), request.NamespacedName, obc); err != nil {
 		return reconcile.Result{}, err
 	}
 
-	///   ///   ///   ///   ///   ///   ///
-	// TODO    CAUTION! UNDER CONSTRUCTION!
-	///   ///   ///   ///   ///   ///   ///
-	err := wait.PollImmediate(
-		r.SyncOBCInterval,
-		r.SyncOBCTimeout,
-		func() (done bool, err error) {
-			for i := 0; i < r.SyncOBCMaxRetries, {
-				ob, s3Keys, err := r.Provisioner.Provision(obc)
-				if err != nil {
-					// Provision returned an error, attempt to the delete the bucket if it was created, then
-					// exit the wait loop.
-					return true, r.Provisioner.Delete(obc)
-				}
-				if !s3Keys.AreValid() {
-					return true, fmt.Errorf("")
-				}
-				result, err := controllerutil.CreateOrUpdate(context.TODO(), r.Client, ob, func(existing runtime.Object) error {
-					return nil
-				})
-			}
-			return true, nil
-		})
+	claimClass := obc.Spec.StorageClass
+
+	if !r.shouldProvision(claimClass) {
+		return reconcile.Result{}, fmt.Errorf("Unrecognized storageClass.provisioner name")
+	}
+
+	// TODO wrap in retry logic
+	ob, s3keys, err := r.provisioner.Provision(obc)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+	if s3keys.AreEmpty() {
+		msg := "s3 access key or secret key is nil"
+		err = r.provisioner.Delete(obc)
+		if err != nil {
+			msg = fmt.Sprintf("%s, error deleting bucket: %v", msg, err)
+		}
+		return reconcile.Result{}, fmt.Errorf("%v", err)
+	}
+
+	// TODO wap in retry logic
+	if err = r.client.Create(context.TODO(), ob); err != nil {
+		return reconcile.Result{}, err
+	}
+
 	return reconcile.Result{}, nil
 }
 
+// A simplistic check on whether this obc is a concern for this provisioner.  Likely to need
+// a more complex check down the road
+func (r *objectBucketClaimReconciler) shouldProvision(class string) bool {
+	return class == "" && class != r.provisionerName
+}
+
+func (r *objectBucketClaimReconciler) classFromClaim(obc *v1alpha1.ObjectBucketClaim) (*v1.StorageClass, error) {
+	sc := &v1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: obc.Spec.StorageClass,
+		},
+	}
+	scKey, err := client.ObjectKeyFromObject(sc)
+	if err != nil {
+		return nil, fmt.Errorf("could not get storage class key: %v", err)
+	}
+	err = r.client.Get(context.TODO(), scKey, sc)
+	if err != nil {
+		return nil, fmt.Errorf("could not get storage class: %v", err)
+	}
+	return sc, nil
+}
