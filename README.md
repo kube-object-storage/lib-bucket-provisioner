@@ -48,42 +48,45 @@ function.
 dynamic provisioning is supported by the bucket lib.
 
 The `Provision()` and `Delete()`functions are interfaces defined in the bucket library.
-All bucket provisioners are required to return an OB struct (which is used to
+To provision a bucket, all provisioners are required to return an OB struct (which is used to
 construct the ConfigMap) and the bucket credentials (which are used to create the
-Secret).The Secret and ConfigMap have deterministic names, namespaces, and property keys.
+Secret). The Secret and ConfigMap have deterministic names, namespaces, and property keys.
 An app pod consuming a bucket need only be aware of the Secret name and keys, and the
 ConfigMap name and fields. The app pod will not run until the bucket has been provisioned
 and can be accessed. This is true even if the pod is created prior to the OBC.
 
 ### Binding
 Bucket binding requires these steps before the bucket is accessible to an app pod:
-1. the creation of the physical bucket with owner credentials. This step is required
-by each object store provisioner,
+1. the creation of the physical bucket with owner credentials (performed
+by each provisioner),
 1. the creation of a Secret, based on the provisioner's returned credentials, residing
-in the OBC's namespace. This is done by the bucket library,
-1. the creation of a ConfigMap which contains the endpoint of the bucket. Also done
-by the bucket lib,
+in the OBC's namespace (performed by the bucket library),
+1. the creation of a ConfigMap which contains the endpoint of the bucket (performed
+by the bucket library).
 
 `Bound` is one of the supported phases of an OB and OBC. `Bound` indicates that a
 bucket and all related artifacts have been created on behalf of the OBC.
 
 **Note:** bucket provisioners that wish to prevent the OBC author from creating
-buckets outside of the Kubernetes cluster should return credentials lacking
+buckets outside of the Kubernetes cluster should return credentials lacking bucket
 CREATE access.
 
 ### Bucket Deletion
-Contsistent with PVCs, an OBC can be deleted but the underlying bucket is not removed due
-to concerns with deleting objects that cannot be easily recovered. However, OBC deletion
-triggers cleanup of the Kubernetes resources created on behalf of the bucket: the
-Secret and ConfigMap. Since the physical bucket is not deleted neither is the OB,
-which represents this bucket. The OB's status will indicate that the related OBC
-has been deleted so that an admin has better visibility into buckets that are missing
-their connection information.
+Contsistent with PVCs, when an OBC is deleted **and** the OB's _reclaimPolicy_ is set
+to "delete", the assoicated OB is also deleted. This is true regardless of the `Delete()`
+implementation of the provisioner. For example, the provisioner could decide to not
+delete the underlying bucket storage, but the OB will still be deleted by the library.
+If the _reclaimPolicy_ is not set to "delete" then the provisioner's `Delete()` method is not invoked.
 
-The generated OB's `ownerReference` is set to the object store service, not to the OBC.
-This allows an OBC to be deleted while preserving the OB. When the object store
-service is deleted all OBs belonging to that object store will be automatically
-deleted by Kubernetes due to the `ownerReference` setting.
+Independent of the _reclaimPolicy_, the generated Secret and ConfigMap are always deleted,
+by the bucket lib, when an OBC is deleted. In this case, the OB's status will indicate that
+the related OBC has been deleted so that an admin has better visibility into buckets which
+are missing their connection information.
+
+To reduce the chances of an admin deleting a _bound_ OB, a finalizer is added to the OB. 
+The library's OBC controller will remove the finalizer when an OBC is deleted. Additionally,
+the lib's OB controller will detect bound OBs missing their OBCs. The status in these OBs
+will be set to "lost" to reflect that they are orphaned.
 
 **Note:** the bucket library has no mechanism to prevent an OBC from being deleted when one or
 more pods indirectly reference the OBC via the Secret and ConfigMap. This concept came late
@@ -189,9 +192,8 @@ apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucket
 metadata:
   name: object-bucket-claim-MY-BUCKET-1
-  ownerReferences: [1]
-  - name: CEPH-CLUSTER
-    ...
+  finalizers: [1]
+  - object.bucket.lib
   labels:
     ceph.rook.io/object: [2]
 spec:
@@ -201,8 +203,7 @@ status:
   claimRef: objectreference [4]
   phase: {"pending", "bound", "lost"} [5]
 ```
-1. `ownerReferences` marks the OB as a child of the object store. If the store is deleted, the bucket will be 
- automatically deleted
+1. `finalizers` set and cleared by the lib's OBC controller. Prevents accidental deletion of an OBC
 1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
 1. `objectBucketSource` is a struct containing metadata of the object store provider
 1. `claimRef` is an objectReference to the associated OBC
