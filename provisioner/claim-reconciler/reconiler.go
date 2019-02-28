@@ -1,14 +1,19 @@
-package object_bucket_claim_reconciler
+package reconciler
 
 import (
 	"context"
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/provisioner"
-	"k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/auth"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	apierrs "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,13 +29,38 @@ type objectBucketClaimReconciler struct {
 
 var _ reconcile.Reconciler = &objectBucketClaimReconciler{}
 
-type ReconcilerOptions struct {
+const (
+	defaultRetryBaseInterval = time.Second * 10
+	defaultRetryTimeout      = time.Second * 360
+	defaultRetryBackOff      = 1
+
+	finalizer = "lib-bucket-provisioner/finalizer"
+
+	// Fields Names
+	bucketName      = "S3_BUCKET_NAME"
+	bucketHost      = "S3_BUCKET_HOST"
+	bucketPort      = "S3_BUCKET_PORT"
+	bucketSSL       = "S3_BUCKET_SSL"
+	bucketAccessKey = "BUCKET_ACCESS_KEY_ID"
+	bucketSecretKey = "BUCKET_SECRET_KEY"
+)
+
+type Options struct {
 	RetryInterval time.Duration
 	RetryTimeout  time.Duration
 	RetryBackoff  int
 }
 
-func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner, options ReconcilerOptions) *objectBucketClaimReconciler {
+func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner, options Options) *objectBucketClaimReconciler {
+	if options.RetryInterval < defaultRetryBaseInterval {
+		options.RetryInterval = defaultRetryBaseInterval
+	}
+	if options.RetryTimeout < defaultRetryTimeout {
+		options.RetryTimeout = defaultRetryTimeout
+	}
+	if options.RetryBackoff < defaultRetryBackOff {
+		options.RetryBackoff = defaultRetryBackOff
+	}
 	return &objectBucketClaimReconciler{
 		client:          c,
 		provisionerName: strings.ToLower(name),
@@ -56,15 +86,17 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	// 6. create the secret and config map in the OBC namespace
 
 	obc := &v1alpha1.ObjectBucketClaim{}
-
 	if err := r.client.Get(context.TODO(), request.NamespacedName, obc); err != nil {
 		return reconcile.Result{}, err
 	}
 
-	claimClass := obc.Spec.StorageClass
+	claimClass, err := r.classFromClaim(obc)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 
 	if !r.shouldProvision(claimClass) {
-		return reconcile.Result{}, fmt.Errorf("Unrecognized storageClass.provisioner name")
+		return reconcile.Result{}, fmt.Errorf("claim failed shouldProvision check")
 	}
 
 	// TODO wrap in retry logic
@@ -81,33 +113,89 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return reconcile.Result{}, fmt.Errorf("%v", err)
 	}
 
-	// TODO wap in retry logic
-	if err = r.client.Create(context.TODO(), ob); err != nil {
-		return reconcile.Result{}, err
-	}
+	// TODO wrap in retry logic
+	err = wait.PollImmediate(r.retryInterval, r.retryTimeout, func() (done bool, err error) {
+		if err = r.client.Create(context.TODO(), ob); err != nil {
+			if apierrs.IsAlreadyExists(err) {
+				return true, fmt.Errorf("object bucket %s already exists: %v", ob.Name, err)
+			} else {
+				return true, fmt.Errorf("object bucket %s creation failed: %v", ob.Name, err)
+			}
+		}
+		return true, nil
+	})
+
+	credSecret := newCredentailsSecret(obc, s3keys)
+	err = wait.PollImmediate(r.retryInterval, r.retryTimeout, func() (done bool, err error) {
+		if err = r.client.Create(context.TODO(), credSecret); err != nil {
+			if apierrs.IsAlreadyExists(err) {
+				return true, fmt.Errorf("secret %s/%s already exists: %v", credSecret.Namespace, credSecret.Name, err)
+			} else {
+				return true, fmt.Errorf("secret %s/%s creation failed: %v", err)
+			}
+		}
+		return true, nil
+	})
+
+	bucketConfigMap := newBucketConfigMap(ob, obc)
+	err = wait.PollImmediate(r.retryInterval, r.retryTimeout, func() (done bool, err error) {
+		if err = r.client.Create(context.TODO(), bucketConfigMap); err != nil {
+			if apierrs.IsAlreadyExists(err) {
+				return true, fmt.Errorf("configMap %s/%s already exists: %v", bucketConfigMap.Namespace, bucketConfigMap.Name, err)
+			} else {
+				return true, fmt.Errorf("configMap %s/%s creation failed: %v", err)
+			}
+		}
+		return true, nil
+	})
 
 	return reconcile.Result{}, nil
 }
 
-// A simplistic check on whether this obc is a concern for this provisioner.  Likely to need
-// a more complex check down the road
-func (r *objectBucketClaimReconciler) shouldProvision(class string) bool {
-	return class == "" && class != r.provisionerName
+// A simplistic check on whether this obc is a concern for this provisioner.  Down the road, this will perform a broader
+// set of checks.
+func (r *objectBucketClaimReconciler) shouldProvision(class *storagev1.StorageClass) bool {
+	return class.Provisioner == r.provisionerName
 }
 
-func (r *objectBucketClaimReconciler) classFromClaim(obc *v1alpha1.ObjectBucketClaim) (*v1.StorageClass, error) {
-	sc := &v1.StorageClass{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: obc.Spec.StorageClass,
-		},
+func (r *objectBucketClaimReconciler) classFromClaim(obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
+	className := obc.Spec.StorageClass
+	if className == "" {
+		return nil, fmt.Errorf("got empty string storage class name")
 	}
-	scKey, err := client.ObjectKeyFromObject(sc)
-	if err != nil {
-		return nil, fmt.Errorf("could not get storage class key: %v", err)
-	}
-	err = r.client.Get(context.TODO(), scKey, sc)
+	sc := &storagev1.StorageClass{}
+	err := r.client.Get(context.TODO(), client.ObjectKey{Name: className}, sc)
 	if err != nil {
 		return nil, fmt.Errorf("could not get storage class: %v", err)
 	}
 	return sc, nil
+}
+
+func newCredentailsSecret(obc *v1alpha1.ObjectBucketClaim, keys *auth.S3AccessKeys) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: v1.ObjectMeta{
+			GenerateName: "obc.Name" + "-secret",
+			Namespace:    obc.Namespace,
+			Finalizers:   []string{finalizer},
+		},
+		StringData: map[string]string{
+			bucketAccessKey: keys.AccessKey,
+			bucketSecretKey: keys.SecretKey,
+		},
+	}
+}
+
+func newBucketConfigMap(ob *v1alpha1.ObjectBucket, obc *v1alpha1.ObjectBucketClaim) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      obc.Name,
+			Namespace: obc.Namespace,
+		},
+		Data: map[string]string{
+			bucketName: ob.Spec.BucketName,
+			bucketHost: ob.Spec.Host,
+			bucketPort: strconv.Itoa(ob.Spec.Port),
+			bucketSSL:  strconv.FormatBool(ob.Spec.SSL),
+		},
+	}
 }

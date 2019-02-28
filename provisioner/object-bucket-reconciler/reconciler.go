@@ -1,4 +1,4 @@
-package object_bucket_reconciler
+package reconciler
 
 import (
 	"context"

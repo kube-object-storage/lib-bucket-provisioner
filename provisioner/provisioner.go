@@ -19,11 +19,8 @@ import (
 )
 
 const (
-	ProvisionerNamePrefix    = "object-bucket-claims.lib-bucket-provisioner/"
-	DefaultRetryBaseInterval = time.Second * 10
-	DefaultRetryTimeout      = time.Second * 360
-	DefaultRetryBackOff      = 1
-	DefaultThreadiness       = 1
+	ProvisionerNamePrefix = "object-bucket-claims.lib-bucket-provisioner/"
+	DefaultThreadiness    = 1
 )
 
 // provisionerController is the first iteration of our internal provisioning
@@ -64,22 +61,13 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provis
 	if options.Threadiness < DefaultThreadiness {
 		options.Threadiness = DefaultThreadiness
 	}
-	if options.ProvisionBaseInterval < DefaultRetryBaseInterval {
-		options.ProvisionBaseInterval = DefaultRetryBaseInterval
-	}
-	if options.ProvisionRetryTimeout < DefaultRetryTimeout {
-		options.ProvisionRetryTimeout = DefaultRetryTimeout
-	}
-	if options.ProvisionRetryBackoff < DefaultRetryBackOff {
-		options.ProvisionRetryBackoff = DefaultRetryBackOff
-	}
 
 	ctrl := &provisionerController{
 		provisioner: provisioner,
 		threads:     options.Threadiness,
 	}
 
-	// TODO manage.ReconcilerOptions.SyncPeriod may be worth looking at
+	// TODO manage.Options.SyncPeriod may be worth looking at
 	//  This determines the minimum period of time objects are synced
 	//  This is especially interesting for ObjectBuckets should we decide they should sync with the underlying bucket.
 	//  For instance, if the actual bucket is deleted,
@@ -106,7 +94,7 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provis
 		For(&v1alpha1.ObjectBucketClaim{}).
 		Owns(&v1.ConfigMap{}).
 		Owns(&v1.Secret{}).
-		Complete(claimReconciler.NewObjectBucketClaimReconciler(rc, provisionerName, provisioner, claimReconciler.ReconcilerOptions{
+		Complete(claimReconciler.NewObjectBucketClaimReconciler(rc, provisionerName, provisioner, claimReconciler.Options{
 			RetryInterval: options.ProvisionBaseInterval,
 			RetryBackoff:  options.ProvisionRetryBackoff,
 			RetryTimeout:  options.ProvisionRetryTimeout,
