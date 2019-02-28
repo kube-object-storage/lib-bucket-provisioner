@@ -108,6 +108,40 @@ of buckets can be controlled by a resource quota once
 Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the 
 number of buckets.
 
+### Watches
+The bucket provisioning library provides watches for OBCs across all namespaces, and for OBs.
+Each binary importing the lib is performing the same watches; however, the OBC watch quickly
+skips OBCs that do not target the specific provisioner. On the other hand, all provisioners
+watch all OBs. 
+
+The OBC watch performs the following:
++ detects a new OBC:
+  + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
+  + invokes the `Provision()` method for the provisioner defined in the OBC's storage class
+  + if the provisioning is successful:
+    + creates a global OB which references the OBC and storage class and contains store-specific bucket info
+    + creates a Secret, in the namespace as the OBC, containing the bucket credentials returned by the provisioner
+    + creates the ConfigMap, in the namespace as the OBC, containing the bucket's endpoint info
++ detects OBC update events:
+  + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
+  + ensures the expected OB, Secret and ConfigMap are present
+  + syncs the OB's status to reflect the OBC's status
++ detects OBC delete events:
+  + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
+  + if the associated OB's _reclaimPolicy_ == "Delete":
+    + invokes the `Delete()` method for the provisioner defined in the OBC's storage class
+  + deletes the related Secret, ConfigMap (in the OBC's namespace), and OB
+
+The OB watch performs the following:
++ detects a new OB:
+  + ensures a matching OBC exists
+    + if yes, sets status to "pending"
+    + if no, sets status to "lost" since this OB is orphaned
++ detects OB update events:
+  + same OBC check and status update as for _new_ OB
+  + syncs the OBC's status to reflect the OB's status
++ detects and ignores OB delete events 
+
 ### Limitations
 The nature of a Go library implies that there will be redundancy in the object bucket provisioners
 and _fatness_ in the provisioner binaries. Cluster resource usage doesn't scale well as the
@@ -126,11 +160,15 @@ provisioner performing OB watches is mitigated by:
 There is an edge case where if only a single provisioner is running, an OBC is deleted, the provisioner
 dies before deleting the OB (and/or Secret, and/or ConfigMap), and **no** provisioner is run again, then
 that OB remains orphaned with no change to its status.  If something similar happened in Kubernetes the
-central controller would sync and detect the orphaned OB. A potential solution, without using a central
-bucket controller, is to run several copies of each provisioner and use _Leader election_, see 
-[example](https://github.com/kubernetes/client-go/blob/master/tools/leaderelection/example/main.go), to
-handle provisioners who unexpectedly die. Of course, running the provisioner from a Deployment is simpler
-and may be sufficiently effective.
+central controller would sync and detect the orphaned OB. A simple solution is to run each provisioner
+in a Deployment so that a provisioner is always running. When a provisioner restarts it will fetch all OBs
+and thus detect this orphan case.
+
+Lastly, if OB watches (which don't skip out early like OBC watches) are too resource hungry then a possible
+solution could be to use
+[_leader election_](https://github.com/kubernetes/client-go/blob/master/tools/leaderelection/example/main.go)
+when more than one provisioner is running. The "leader" provisioner will watch OBs (in addition to OBCs)
+while the non-leaders only watch OBCs.
 
 ## API Specifications (subject to change)
 
@@ -192,6 +230,92 @@ status:
 1. `configMapRef` is an objectReference to the generated ConfigMap 
 1. `secretRef` is an objectReference to the generated Secret
 
+### Generated Secret (sample for rook-ceph provider)
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: object-bucket-claim-MY-BUCKET-1 [1]
+  namespace: USER-NAMESPACE [2]
+  labels:
+    ceph.rook.io/object: [3]
+  ownerReferences:
+  - name: MY-BUCKET-1 [4]
+    ...
+data:
+  ACCESS_KEY_ID: BASE64_ENCODED-1
+  SECRET_ACCESS_KEY: BASE64_ENCODED-2
+```
+1. `name` is composed from the OBC's `metadata.name`
+1. `namespce` is that of a originating OBC
+1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
+1. `ownerReference` makes this secret a child of the originating OBC for clean up purposes
+
+### Generated ConfigMap (sample for rook-ceph provider)
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: object-bucket-claim-MY-BUCKET-1 [1]
+  namespace: USER-NAMESPACE [2]
+  labels:
+    ceph.rook.io/object: [3]
+  ownerReferences: [4]
+  - name: MY-BUCKET-1
+    ...
+data: 
+  S3_BUCKET_HOST: http://MY-STORE-URL [5]
+  S3_BUCKET_PORT: 80 [6]
+  S3_BUCKET_NAME: MY-BUCKET-1 [7]
+  S3_BUCKET_SSL: no [8]
+  S3_BUCKET_URL: http://MY-STORE-URL/MY_BUCKET_1:80 [9]
+```
+1. `name` composed from `rook-ceph-object-bucket-` and ObjectBucketClaim `metadata.name` value concatenated
+1. `namespace` determined by the namespace of the ObjectBucketClaim
+1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
+1. `ownerReference` sets the ConfigMap as a child of the ObjectBucketClaim. Deletion of the ObjectBucketClaim causes the deletion of the ConfigMap
+1. `S3_BUCKET_HOST` host URL
+1. `S3_BUCKET_PORT` host port
+1. `S3_BUCKET_NAME` bucket name
+1. `S3_BUCKET_SSL` boolean representing SSL connection
+1. `S3_BUCKET_URL` full URL endpoint, aware of SSL flag and port
+
+### App Pod (independent of provisioner)
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-pod
+  namespace: dev-user
+spec:
+  containers:
+  - name: mycontainer
+    image: redis
+    env:
+      # Bucket credentials
+      - name: MY_ACCESS_KEY_ID [1]
+        valueFrom:
+          secretKeyRef:
+            name: object-bucket-claim-MY-BUCKET-1 [2]
+            key: ACCESS_KEY_ID [3]
+      - name: MY_SECRET_KEY [1]
+        valueFrom:
+          secretKeyRef:
+            name: object-bucket-claim-MY-BUCKET-1 [2]
+            key: SECRET_ACCESS_KEY [3]
+      # Bucket endpoint data
+      - name: BUCKET_URL [1]
+          valueFrom:
+            configMapKeyRef:
+              name: object-bucket-claim-MY-BUCKET-1 [4]
+              key: S3_BUCKET_URL [5]
+```
+1. the name of the environment variable that will be referenced in the pod
+1. the name of the generated secret, "object-bucket-claim-" + OBC name
+1. the key name defined in the secret
+1. the name of the generated configMap, "object-bucket-claim-" + OBC name
+1. the key name defined in the configMap
+
 ### OB Custom Resource Definition
 ```yaml
 apiVersion: apiextensions.k8s.io/v1beta1
@@ -224,66 +348,24 @@ metadata:
 spec:
   objectBucketSource: [3]
     provider: ceph.rook.io/object
+  storageClassName: OBCs-STORAGE-CLASS [4]
+  claimRef: objectreference [5]
+  reclaimPolicy: {"Delete", "Retain"} [6]
 status:
-  claimRef: objectreference [4]
-  phase: {"pending", "bound", "lost"} [5]
+  phase: {"pending", "bound", "lost"} [7]
 ```
 1. `finalizers` set and cleared by the lib's OBC controller. Prevents accidental deletion of an OBC
 1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
 1. `objectBucketSource` is a struct containing metadata of the object store provider
+1. `storageClassName` is the name of the storage class, referenced by the OBC, containing the provisioner
+and object store service name
 1. `claimRef` is an objectReference to the associated OBC
+1. `reclaimPolicy` is the reclaim policy from the Storge Class referenced in the OBC
 1. `phase` is the current state of the ObjectBucket:
     - _pending_: the operator is processing the request
     - _bound_: the operator finished processing the request and linked the OBC and OB
     - _lost_: the OBC has been deleted, leaving the OB unclaimed
 
-### Generated Secret for User Access (sample for rook-ceph provider)
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: object-bucket-claim-MY-BUCKET-1 [1]
-  namespace: USER-NAMESPACE [2]
-  labels:
-    ceph.rook.io/object: [3]
-  ownerReferences:
-  - name: MY-BUCKET-1 [4]
-    ...
-data:
-  ACCESS_KEY_ID: BASE64_ENCODED-1
-  SECRET_ACCESS_KEY: BASE64_ENCODED-2
-```
-1. `name` is composed from the OBC's `metadata.name`
-1. `namespce` is that of a originating OBC
-1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
-1. `ownerReference` makes this secret a child of the originating OBC for clean up purposes
-
-### Generated ConfigMap (sample for rook-ceph provider)
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: rook-ceph-object-bucket-MY-BUCKET-1 [1]
-  namespace: USER-NAMESPACE [2]
-  labels:
-    ceph.rook.io/object: [3]
-  ownerReferences: [4]
-  - name: MY-BUCKET-1
-    ...
-data: 
-  S3_BUCKET_HOST: http://MY-STORE-URL [5]
-  S3_BUCKET_PORT: 80 [6]
-  S3_BUCKET_NAME: MY-BUCKET-1 [7]
-  S3_BUCKET_SSL: no [8]
-```
-1. `name` composed from `rook-ceph-object-bucket-` and ObjectBucketClaim `metadata.name` value concatenated
-1. `namespace` determined by the namespace of the ObjectBucketClaim
-1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
-1. `ownerReference` sets the ConfigMap as a child of the ObjectBucketClaim. Deletion of the ObjectBucketClaim causes the deletion of the ConfigMap
-1. `S3_BUCKET_HOST` host URL
-1. `S3_BUCKET_PORT` host port
-1. `S3_BUCKET_NAME` bucket name
-1. `S3_BUCKET_SSL` boolean representing SSL connection
 
 ### StorageClass (sample for rook-ceph-rgw provider)
 ```yaml
