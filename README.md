@@ -108,6 +108,30 @@ of buckets can be controlled by a resource quota once
 Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the 
 number of buckets.
 
+### Limitations
+The nature of a Go library implies that there will be redundancy in the object bucket provisioners
+and _fatness_ in the provisioner binaries. Cluster resource usage doesn't scale well as the
+number of provisioners increases. And, fixing a bug in the library necessitates a recompile of all
+provisioners, if they want the fix.
+
+This proposal also differs from the Kubernetes external provisioner lib in that there is no centralized,
+_core_ bucket/claim controller to handle missed events by performing periodic syncs. For example, in the
+bucket lib, each provisioner watches OBs and updates orphaned OBs when its OBC is not found.
+With an understanding of the Kubernetes approach, it is reasonable to suggest that we also need a centralized
+bucket controller in addition to/or in lieu of the library. However, the cost to the cluster of each 
+provisioner performing OB watches is mitigated by:
++  OBs, OBCs and associated Storage Classes being cached for fast access, bypassing the API,
++  the number of bucket provisioners per cluster is anticipated as being relatively small.
+
+There is an edge case where if only a single provisioner is running, an OBC is deleted, the provisioner
+dies before deleting the OB (and/or Secret, and/or ConfigMap), and **no** provisioner is run again, then
+that OB remains orphaned with no change to its status.  If something similar happened in Kubernetes the
+central controller would sync and detect the orphaned OB. A potential solution, without using a central
+bucket controller, is to run several copies of each provisioner and use _Leader election_, see 
+[example](https://github.com/kubernetes/client-go/blob/master/tools/leaderelection/example/main.go), to
+handle provisioners who unexpectedly die. Of course, running the provisioner from a Deployment is simpler
+and may be sufficiently effective.
+
 ## API Specifications (subject to change)
 
 ### OBC Custom Resource Definition
