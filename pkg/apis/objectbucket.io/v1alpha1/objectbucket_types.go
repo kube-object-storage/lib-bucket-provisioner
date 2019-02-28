@@ -45,9 +45,11 @@ type ObjectBucketStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:openapi-gen=true
+// +genClient
+// +genClient:nonNamespaced
 
 // ObjectBucket is the Schema for the objectbuckets API
-// +k8s:openapi-gen=true
 type ObjectBucket struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -57,6 +59,8 @@ type ObjectBucket struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genClient
+// +genClient:nonNamespaced
 
 // ObjectBucketList contains a list of ObjectBucket
 type ObjectBucketList struct {

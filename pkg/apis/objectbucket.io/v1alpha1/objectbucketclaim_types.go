@@ -49,9 +49,10 @@ type ObjectBucketClaimStatus struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:openapi-gen=true
+// +genClient
 
 // ObjectBucketClaim is the Schema for the objectbucketclaims API
-// +k8s:openapi-gen=true
 type ObjectBucketClaim struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -61,6 +62,7 @@ type ObjectBucketClaim struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genClient
 
 // ObjectBucketClaimList contains a list of ObjectBucketClaim
 type ObjectBucketClaimList struct {
