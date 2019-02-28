@@ -8,7 +8,7 @@ library. The goal is to eventually move this repo to a Kubernetes repo within _s
 
 ### Assumptions
 1. The object store is represented by a Kubernetes service.
-1. _Brownfield_, meaning existing, legacy buckets, is not supported (yet). _New_, dynamic
+1. _Brownfield_, meaning existing buckets, is not supported (yet). _New_, dynamic
 bucket provisioning is the focus of this proposal.
 
 ### Design
@@ -18,9 +18,9 @@ and a claim/request for such a bucket.  It's important to keep in mind that this
 only defines bucket and bucket claim APIs and related library code. The lib ensures that 
 the _contract_ made to app developers regarding the artifacts of bucket creation is guaranteed.
 The actual creation of physical buckets belongs to each object store provisioner.
-The bucket library handles watches on bucket claims and the (generated) bucket objects, reconciling
-state-of-the-world, creating the artifacts (Secret, ConfigMap) consumed by app pods, and
-cleaning up the resources generated on behalf of the claim.
+The bucket library handles watches on bucket claims and the (generated) bucket objects, reconciles
+state-of-the-world, creates the artifacts (Secret, ConfigMap) consumed by app pods, and
+deletes resources generated on behalf of the claim.
 
 An `ObjectBucketClaim` (OBC) is similar in usage to a Persistent Volume Claim and an `ObjectBucket`
 (OB) is the Persistent Volume equivalent. 
@@ -36,16 +36,13 @@ As is true for dynamic PV provisioning, a bucket provisioner needs to be running
 for each object store supported by the Kubernetes cluster. For example, if the
 underlying object store is AWS S3, the developer will create an OBC, referencing
 a Storage Class which references the S3 store. The cluster has the S3 provisioner
-running which is watching (via the bucket lib) for OBCs that it knows how to handle.
-Other OBCs are ignored by the S3 provisioner. Additionally, the same cluster can have a
-rook-ceph RGW provisioner running which also watches OBCs (again via the lib). Like the S3
-proivisioner, it only handles OBCs that it knows how to provision and skips the rest. In this
-proposal, the bucket provisioners will be simple-to-write bnaries because the bucket
-provisioning lib handles the bulk of the work. Each provisioner is only responsible for writing
-`Provision()` and `Delete()`functions and a short `main()` function.
-
-**Note:** even though the PV-PVC design supports static provisioning, only
-dynamic provisioning is supported by the bucket lib at this time.
+running which is watching (via the bucket lib) for OBCs that it knows how to handle, while
+other OBCs are ignored. Additionally, the same cluster can have a rook-ceph RGW provisioner
+running which also watches OBCs (again via the lib). Like the S3 proivisioner, it only
+handles OBCs that it knows how to provision and skips the rest. In this proposal, the
+bucket provisioners will be simple-to-write binaries because the bucket provisioning lib
+handles the bulk of the work. Each provisioner is only responsible for writing `Provision()`
+and `Delete()`functions and a short `main()` function.
 
 The `Provision()` and `Delete()`functions are interfaces defined in the bucket library.
 To provision a bucket, all provisioners are required to return an OB struct (which is used to
@@ -54,6 +51,9 @@ Secret). The Secret and ConfigMap have deterministic names, namespaces, and prop
 An app pod consuming a bucket need only be aware of the Secret name and keys, and the
 ConfigMap name and fields. The app pod will not run until the bucket has been provisioned
 and can be accessed. This is true even if the pod is created prior to the OBC.
+
+**Note:** even though the PV-PVC design supports static provisioning, only
+dynamic provisioning is supported by the bucket lib at this time.
 
 ### Binding
 Bucket binding requires these steps before the bucket is accessible to an app pod:
@@ -81,8 +81,6 @@ delete the underlying bucket storage, but the OB will still be deleted by the li
 If the _reclaimPolicy_ is not set to "delete" then the provisioner's `Delete()` method is
 not invoked and the associated OB is not deleted. In this case, the remaining OB's status will
 be set to "retained", indicating that the OBC has been deleted but the bucket is still available.
-This gives admins better visibility into buckets which are missing their connection information.
-
 Independent of the _reclaimPolicy_, the generated Secret and ConfigMap are always deleted
 by the bucket lib when an OBC is deleted. 
 
