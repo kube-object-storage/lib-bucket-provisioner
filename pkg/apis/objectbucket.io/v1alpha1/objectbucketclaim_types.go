@@ -48,9 +48,9 @@ type ObjectBucketClaimStatus struct {
 	ObjectBucketRef *v1.ObjectReference
 }
 
+// +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:openapi-gen=true
-// +genClient
 
 // ObjectBucketClaim is the Schema for the objectbucketclaims API
 type ObjectBucketClaim struct {
@@ -62,7 +62,6 @@ type ObjectBucketClaim struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +genClient
 
 // ObjectBucketClaimList contains a list of ObjectBucketClaim
 type ObjectBucketClaimList struct {

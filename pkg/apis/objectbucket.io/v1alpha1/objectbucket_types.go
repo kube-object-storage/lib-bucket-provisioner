@@ -44,10 +44,10 @@ type ObjectBucketStatus struct {
 	Conditions v1.ConditionStatus
 }
 
+// +genclient
+// +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:openapi-gen=true
-// +genClient
-// +genClient:nonNamespaced
 
 // ObjectBucket is the Schema for the objectbuckets API
 type ObjectBucket struct {
@@ -59,8 +59,6 @@ type ObjectBucket struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-// +genClient
-// +genClient:nonNamespaced
 
 // ObjectBucketList contains a list of ObjectBucket
 type ObjectBucketList struct {
