@@ -194,7 +194,7 @@ kind: ObjectBucket
 metadata:
   name: object-bucket-claim-MY-BUCKET-1
   finalizers: [1]
-  - object.bucket.lib
+  - objectbucket.lib/ob-protection
   labels:
     ceph.rook.io/object: [2]
 spec:
