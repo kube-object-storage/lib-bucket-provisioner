@@ -209,21 +209,20 @@ kind: ObjectBucketClaim
 spec:
   ... 
   bucketName: photo-booth-62PrQ [1]
-  objectBucketName:  [2]
+  objectBucketRef: objectReference{} [2]
+  configMapRef: objectReference{} [3]
+  secretRef: objectReference{} [4]
 status:
-  phase: {"pending", "bound", "released", "failed"}  [3]
-  objectBucketRef: objectReference{}  [4]
-  configMapRef: objectReference{}  [5]
-  secretRef: objectReference{}  [6]
+  phase: {"pending", "bound", "released", "failed"}  [5]
 ```
 1. the generated, unique bucket name for the new bucket (standard Kubernetes generated name).
-1. the name of the OB bound to this OBC (may become input for brownfield)
+1. objectReference to the generated OB.
+1. objectReference to the generated ConfigMap.
+1. objectReference to the generated Secret.
 1. phases of bucket creation, mutually exclusive:
     - _pending_: the operator is processing the request
     - _bound_: the operator finished processing the request and linked the OBC and OB
     - _released_: the OB has been deleted, leaving the OBC unclaimed but unavailable.
-1. objectReference to the generated ConfigMap .
-1. objectReference to the generated Secret.
 
 ### Generated Secret (sample for rook-ceph provider)
 ```yaml
