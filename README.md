@@ -191,131 +191,6 @@ spec:
     status: {}
 ```
 
-### OBC Custom Resource (User Defined)
-```yaml
-apiVersion: objectbucket.s3.io/v1alpha1
-kind: ObjectBucketClaim
-metadata:
-  name: MY-BUCKET-1 [1]
-  namespace: USER-NAMESPACE [2]
-spec:
-  storageClassName: AN-OBJECT-STORE-STORAGE-CLASS [3]
-  tenant: MY-TENANT [4]
-```
-1. name of the ObjectBucketClaim. This name becomes part of the bucket and ConfigMap names.
-1. namespace of the ObjectBucketClaim. Determines the namespace of the ConfigMap and Secret.
-Also becomes part of the unique bucket name.
-1. storageClassName is used to target the desired Object Store. Used by the operator to get
-the Object Store service URL.
-1. tenant allows users to define a tenant in an object store in order to namespace their buckets
-and access keys.
-
-### OBC Custom Resource (Status Updated)
-```yaml
-apiVersion: objectbucket.io/v1alpha1
-kind: ObjectBucketClaim
-...
-status:
-  phase: {"pending", "bound", "lost"}  [1]
-  objectBucketRef: objectReference{}  [2]
-  configMapRef: objectReference{}  [3]
-  secretRef: objectReference{}  [4]
-```
-1 `phase` 3 possible phases of bucket creation, mutually exclusive:
-    - _pending_: the operator is processing the request
-    - _bound_: the operator finished processing the request and linked the OBC and OB
-    - _lost_: the OB has been deleted, leaving the OBC unclaimed but unavailable
-    TODO: describe how user/admin deals with _lost_ OBs/OBCs
-1. `objectBucketRef` is an objectReference to the bound ObjectBucket 
-1. `configMapRef` is an objectReference to the generated ConfigMap 
-1. `secretRef` is an objectReference to the generated Secret
-
-### Generated Secret (sample for rook-ceph provider)
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: object-bucket-claim-MY-BUCKET-1 [1]
-  namespace: USER-NAMESPACE [2]
-  labels:
-    ceph.rook.io/object: [3]
-  ownerReferences:
-  - name: MY-BUCKET-1 [4]
-    ...
-data:
-  ACCESS_KEY_ID: BASE64_ENCODED-1
-  SECRET_ACCESS_KEY: BASE64_ENCODED-2
-```
-1. `name` is composed from the OBC's `metadata.name`
-1. `namespce` is that of a originating OBC
-1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
-1. `ownerReference` makes this secret a child of the originating OBC for clean up purposes
-
-### Generated ConfigMap (sample for rook-ceph provider)
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: object-bucket-claim-MY-BUCKET-1 [1]
-  namespace: USER-NAMESPACE [2]
-  labels:
-    ceph.rook.io/object: [3]
-  ownerReferences: [4]
-  - name: MY-BUCKET-1
-    ...
-data: 
-  S3_BUCKET_HOST: http://MY-STORE-URL [5]
-  S3_BUCKET_PORT: 80 [6]
-  S3_BUCKET_NAME: MY-BUCKET-1 [7]
-  S3_BUCKET_SSL: no [8]
-  S3_BUCKET_URL: http://MY-STORE-URL/MY_BUCKET_1:80 [9]
-```
-1. `name` composed from `rook-ceph-object-bucket-` and ObjectBucketClaim `metadata.name` value concatenated
-1. `namespace` determined by the namespace of the ObjectBucketClaim
-1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
-1. `ownerReference` sets the ConfigMap as a child of the ObjectBucketClaim. Deletion of the ObjectBucketClaim causes the deletion of the ConfigMap
-1. `S3_BUCKET_HOST` host URL
-1. `S3_BUCKET_PORT` host port
-1. `S3_BUCKET_NAME` bucket name
-1. `S3_BUCKET_SSL` boolean representing SSL connection
-1. `S3_BUCKET_URL` full URL endpoint, aware of SSL flag and port
-
-### App Pod (independent of provisioner)
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: app-pod
-  namespace: dev-user
-spec:
-  containers:
-  - name: mycontainer
-    image: redis
-    env:
-      # Bucket credentials
-      - name: MY_ACCESS_KEY_ID [1]
-        valueFrom:
-          secretKeyRef:
-            name: object-bucket-claim-MY-BUCKET-1 [2]
-            key: ACCESS_KEY_ID [3]
-      - name: MY_SECRET_KEY [1]
-        valueFrom:
-          secretKeyRef:
-            name: object-bucket-claim-MY-BUCKET-1 [2]
-            key: SECRET_ACCESS_KEY [3]
-      # Bucket endpoint data
-      - name: BUCKET_URL [1]
-          valueFrom:
-            configMapKeyRef:
-              name: object-bucket-claim-MY-BUCKET-1 [4]
-              key: S3_BUCKET_URL [5]
-```
-1. the name of the environment variable that will be referenced in the pod
-1. the name of the generated secret, "object-bucket-claim-" + OBC name
-1. the key name defined in the secret
-1. the name of the generated configMap, "object-bucket-claim-" + OBC name
-1. the key name defined in the configMap
-
 ### OB Custom Resource Definition
 ```yaml
 apiVersion: apiextensions.k8s.io/v1beta1
@@ -335,36 +210,178 @@ spec:
     status: {}
 ```
 
+### OBC Custom Resource (User Defined)
+```yaml
+apiVersion: objectbucket.s3.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: MY-BUCKET-1 [1]
+  namespace: USER-NAMESPACE [2]
+spec:
+  bucketName: [3]
+  generateBucketName: "photo-booth" [4]
+  storageClassName: AN-OBJECT-STORE-STORAGE-CLASS [4]
+  SSL: true | false [5]
+  cannedBucketACL: [6]
+  versioned: [7]
+  additionalConfig: [8]
+    ANY_KEY: VALUE ...
+```
+1. name of the ObjectBucketClaim. This name becomes the Secret and ConfigMap names.
+1. namespace of the ObjectBucketClaim, which is also the namespace of the ConfigMap and Secret.
+1. name of the bucket. If used then `generateBucketName` is ignored. **Not** recommended
+for new buckets -- expected to be used for brownfield buckets. Bucket names must be unique within
+an object store, but an object store can store buckets for OBCs across multiple namespaces.
+1. if used then `bucketName` must be empty. The value here is the prefix in a random name
+and `bucketName` will be set to this generated name.
+1. storageClassName is used to target the desired Object Store. Used by the operator to get
+the object-store service URL.
+1. SSL defines whether the connection to the bucket requires SSL authentication.
+1. predefined bucket ACL. Values:
+{"BucketCannedACLPrivate", "BucketCannedACLPublicRead", "BucketCannedACLPublicReadWrite", "BucketCannedACLAuthenticatedRead".
+1. versioned determines if versioning is enabled.
+1. additionalConfig gives non-AWS S3 providers a location to set proprietary config values (tenant, namespace...).
+The value is a list of 1 or more key-value pairs.
+
+### OBC Custom Resource (after updated by lib)
+```yaml
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+spec:
+  ... 
+  bucketName: photo-booth-7aB620PrQ123 [1]
+  objectBucketName:  [2]
+status:
+  phase: {"pending", "bound", "lost"}  [3]
+  objectBucketRef: objectReference{}  [4]
+  configMapRef: objectReference{}  [5]
+  secretRef: objectReference{}  [6]
+```
+1. the generated, unique bucket name for the new bucket.
+1. the name of the OB bound to this OBC (may become input for brownfield)
+1. phases of bucket creation, mutually exclusive:
+    - _pending_: the operator is processing the request
+    - _bound_: the operator finished processing the request and linked the OBC and OB
+    - _lost_: the OB has been deleted, leaving the OBC unclaimed but unavailable.
+1. objectReference to the generated ConfigMap .
+1. objectReference to the generated Secret.
+
+### Generated Secret (sample for rook-ceph provider)
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: MY-BUCKET-1 [1]
+  namespace: OBC-NAMESPACE [2]
+  labels:
+    ceph.rook.io/object: [3]
+  ownerReferences:
+  - name: MY-BUCKET-1 [4]
+    ...
+data:
+  ACCESS_KEY_ID: BASE64_ENCODED-1
+  SECRET_ACCESS_KEY: BASE64_ENCODED-2
+```
+1. same name as the OBC. Unique since the secret is in the same namespace as the OBC.
+1. namespce of the originating OBC.
+1. (optional per provisioner) the label may be used to associate all artifacts under the Rook-Ceph object provisioner.
+1. ownerReference makes this secret a child of the originating OBC for clean up purposes.
+
+### Generated ConfigMap (sample for rook-ceph provider)
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: MY-BUCKET-1 [1]
+  namespace: OBC-NAMESPACE [2]
+  labels:
+    ceph.rook.io/object: [3]
+  ownerReferences: [4]
+  - name: MY-BUCKET-1
+    ...
+data: 
+  S3_BUCKET_HOST: http://MY-STORE-URL [5]
+  S3_BUCKET_PORT: 80 [6]
+  S3_BUCKET_NAME: MY-BUCKET-1 [7]
+  S3_BUCKET_SSL: no [8]
+  S3_BUCKET_URL: http://MY-STORE-URL/MY_BUCKET_1:80 [9]
+```
+1. same name as the OBC. Unique since the configMap is in the same namespace as the OBC.
+1. determined by the namespace of the ObjectBucketClaim.
+1. (optional per provisioner) the label here associates all artifacts under the Rook-Ceph object provisioner
+1. ownerReference sets the ConfigMap as a child of the ObjectBucketClaim. Deletion of the ObjectBucketClaim causes the deletion of the ConfigMap.
+1. host URL.
+1. host port.
+1. unique bucket name.
+1. boolean representing SSL connection.
+1. full URL endpoint, aware of SSL flag and port.
+
+### App Pod (independent of provisioner)
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-pod
+  namespace: dev-user
+spec:
+  containers:
+  - name: mycontainer
+    image: redis
+    env:
+      # Bucket credentials
+      - name: MY_ACCESS_KEY_ID [1]
+        valueFrom:
+          secretKeyRef:
+            name: MY-BUCKET-1 [2]
+            key: ACCESS_KEY_ID [3]
+      - name: MY_SECRET_KEY [1]
+        valueFrom:
+          secretKeyRef:
+            name: MY-BUCKET-1 [2]
+            key: SECRET_ACCESS_KEY [3]
+      # Bucket endpoint data
+      - name: BUCKET_URL [1]
+          valueFrom:
+            configMapKeyRef:
+              name: MY-BUCKET-1 [4]
+              key: S3_BUCKET_URL [5]
+```
+1. the name of the environment variable that will be referenced in the pod.
+1. the name of the generated secret, which is the OBC name.
+1. the key name defined in the secret.
+1. the name of the generated configMap, which is the OBC name.
+1. the key name defined in the configMap.
+
  ### Generated OB Custom Resource
 ```yaml
 apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucket
 metadata:
-  name: object-bucket-claim-MY-BUCKET-1
-  finalizers: [1]
+  name: OBC-NAMESPACE-MY-BUCKET-1 [1]
+  finalizers: [2]
   - objectbucket.lib/ob-protection
   labels:
-    ceph.rook.io/object: [2]
+    ceph.rook.io/object: [3]
 spec:
-  objectBucketSource: [3]
+  objectBucketSource: [4]
     provider: ceph.rook.io/object
-  storageClassName: OBCs-STORAGE-CLASS [4]
-  claimRef: objectreference [5]
-  reclaimPolicy: {"Delete", "Retain"} [6]
+  storageClassName: OBCs-STORAGE-CLASS [5]
+  claimRef: objectreference [6]
+  reclaimPolicy: {"Delete", "Retain"} [7]
 status:
-  phase: {"pending", "bound", "lost"} [7]
+  phase: {"pending", "bound", "lost"} [8]
 ```
-1. `finalizers` set and cleared by the lib's OBC controller. Prevents accidental deletion of an OBC
-1. (optional per provisioner) The label here associates all artifacts under the Rook-Ceph object provisioner
-1. `objectBucketSource` is a struct containing metadata of the object store provider
-1. `storageClassName` is the name of the storage class, referenced by the OBC, containing the provisioner
-and object store service name
-1. `claimRef` is an objectReference to the associated OBC
-1. `reclaimPolicy` is the reclaim policy from the Storge Class referenced in the OBC
-1. `phase` is the current state of the ObjectBucket:
+1. name consists of the OBC's namespace + "-" + the OBC's metadata.Name (must be unique).
+1. finalizers set and cleared by the lib's OBC controller. Prevents accidental deletion of an OBC.
+1. (optional per provisioner) the label here associates all artifacts under the Rook-Ceph object provisioner.
+1. objectBucketSource is a struct containing metadata of the object store provider.
+1. name of the storage class, referenced by the OBC, containing the provisioner and object store service name.
+1. objectReference to the associated OBC.
+1. reclaim policy from the Storge Class referenced in the OBC.
+1. phase is the current state of the ObjectBucket:
     - _pending_: the operator is processing the request
     - _bound_: the operator finished processing the request and linked the OBC and OB
-    - _lost_: the OBC has been deleted, leaving the OB unclaimed
+    - _lost_: the OBC has been deleted, leaving the OB unclaimed.
 
 
 ### StorageClass (sample for rook-ceph-rgw provider)
@@ -381,11 +398,11 @@ parameters:
   objectStoreServiceNamespace: MY-STORE-NAMESPACE [4]
   region: LOCATION [5]
 ```
-1. Label `ceph.rook.io/object/claims` associates all artifacts under the ObjectBucketClaim operator.  Defined in example StorageClass and set by cluster admin.  
-1. `provisioner` the provisioner responsible to handling OBCs referencing this StorageClass
-1. `objectStore` used by the operator to derive the object store Service name.
-1. `objectStoreNamespace` the namespace of the object store
-1. `region` (optional) defines a region of the object store
+1. label `ceph.rook.io/object/claims` associates all artifacts under the ObjectBucketClaim operator. Defined in example StorageClass and set by cluster admin.  
+1. provisioner responsible to handling OBCs referencing this StorageClass.
+1. objectStore used by the operator to derive the object store Service name.
+1. objectStore is namespace the namespace of the object store.
+1. region is optional qnd defines a region of the object store.
 
 ## Bucket Methods and Structs
 ```golang
