@@ -234,10 +234,9 @@ for new buckets -- expected to be used for brownfield buckets. Bucket names must
 an object store, but an object store can store buckets for OBCs across multiple namespaces.
 1. if used then `bucketName` must be empty. The value here is the prefix in a random name
 and `bucketName` will be set to this generated name.
-1. storageClassName is used to target the desired Object Store. Used by the operator to get
-the object-store service URL.
+1. storageClass which defines the object-store service and the bucket provisioner.
 1. SSL defines whether the connection to the bucket requires SSL authentication.
-1. predefined bucket ACL. Values:
+1. predefined bucket ACLs:
 {"BucketCannedACLPrivate", "BucketCannedACLPublicRead", "BucketCannedACLPublicReadWrite", "BucketCannedACLAuthenticatedRead".
 1. versioned determines if versioning is enabled.
 1. additionalConfig gives non-AWS S3 providers a location to set proprietary config values (tenant, namespace...).
@@ -285,6 +284,7 @@ data:
 1. same name as the OBC. Unique since the secret is in the same namespace as the OBC.
 1. namespce of the originating OBC.
 1. (optional per provisioner) the label may be used to associate all artifacts under the Rook-Ceph object provisioner.
+**TODO: HOW WILL THE PROVISIONER RETURN THIS LABEL TO THE BKT LIB?**
 1. ownerReference makes this secret a child of the originating OBC for clean up purposes.
 
 ### Generated ConfigMap (sample for rook-ceph provider)
