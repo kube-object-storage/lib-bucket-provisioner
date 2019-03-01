@@ -131,7 +131,7 @@ func (c *FakeObjectBucketClaims) DeleteCollection(options *v1.DeleteOptions, lis
 // Patch applies the patch and returns the patched objectBucketClaim.
 func (c *FakeObjectBucketClaims) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.ObjectBucketClaim, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceAction(objectbucketclaimsResource, c.ns, name, pt, data, subresources...), &v1alpha1.ObjectBucketClaim{})
+		Invokes(testing.NewPatchSubresourceAction(objectbucketclaimsResource, c.ns, name, data, subresources...), &v1alpha1.ObjectBucketClaim{})
 
 	if obj == nil {
 		return nil, err

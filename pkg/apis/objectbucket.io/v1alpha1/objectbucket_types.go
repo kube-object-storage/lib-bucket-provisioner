@@ -26,7 +26,7 @@ type ObjectBucketSpec struct {
 	// Versioned true if the object store support versioned buckets, false if not
 	Versioned bool `json:"versioned,omitempty"`
 	// ProviderConfig is map for non-AWS providers to set non-standard configs (tenant, namespace, etc.)
-	ProviderConfig map[string]interface{} `json:"providerConfig,omitempty"`
+	// ProviderConfig map[string]interface{} `json:"providerConfig,omitempty"`
 }
 
 type ObjectBucketStatusPhase string

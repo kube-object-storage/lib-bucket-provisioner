@@ -5,6 +5,7 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/claim-reconciler"
+	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/interface"
 	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/object-bucket-reconciler"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -19,7 +20,7 @@ import (
 )
 
 const (
-	ProvisionerNamePrefix = "object-bucket-claims.lib-bucket-provisioner/"
+	ProvisionerNamePrefix = "objectbucket.io/"
 	DefaultThreadiness    = 1
 )
 
@@ -28,7 +29,7 @@ const (
 // library, is stored for later Provision and Delete calls.
 type provisionerController struct {
 	manager     manager.Manager
-	provisioner Provisioner
+	provisioner _interface.Provisioner
 	threads     int
 }
 
@@ -50,7 +51,7 @@ type ProvisionerOptions struct {
 // instantiate a new provisioning controller. This controller will
 // respond to Add / Update / Delete events by calling the passed-in
 // provisioner's Provisioner and Delete methods.
-func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner Provisioner, kubeVersion string, options *ProvisionerOptions) (*provisionerController, error) {
+func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner _interface.Provisioner, kubeVersion string, options *ProvisionerOptions) (*provisionerController, error) {
 
 	var err error
 

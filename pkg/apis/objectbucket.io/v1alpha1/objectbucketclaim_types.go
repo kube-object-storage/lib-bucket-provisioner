@@ -31,7 +31,7 @@ type ObjectBucketClaimSpec struct {
 	Versioned bool `json:"versioned"`
 	// AdditionalConfig gives non-AWS S3 providers a location to set
 	// proprietary config values (tenant, namespace, etc)
-	AdditionalConfig map[string]interface{} `json:"additionalConfig"`
+	//AdditionalConfig map[string]interface{} `json:"additionalConfig"`
 }
 
 type ObjectBucketClaimStatusPhase string

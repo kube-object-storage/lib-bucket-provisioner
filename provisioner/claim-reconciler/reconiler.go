@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner"
 	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/auth"
+	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/interface"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +21,7 @@ import (
 type objectBucketClaimReconciler struct {
 	client          client.Client
 	provisionerName string
-	provisioner     provisioner.Provisioner
+	provisioner     _interface.Provisioner
 	retryInterval   time.Duration
 	retryTimeout    time.Duration
 	retryBackoff    int
@@ -34,13 +34,12 @@ const (
 	defaultRetryTimeout      = time.Second * 360
 	defaultRetryBackOff      = 1
 
-	finalizer = "lib-bucket-provisioner/finalizer"
+	finalizer = "objectbucket.io/finalizer"
 
 	// Fields Names
 	bucketName      = "S3_BUCKET_NAME"
 	bucketHost      = "S3_BUCKET_HOST"
 	bucketPort      = "S3_BUCKET_PORT"
-	bucketSSL       = "S3_BUCKET_SSL"
 	bucketAccessKey = "BUCKET_ACCESS_KEY_ID"
 	bucketSecretKey = "BUCKET_SECRET_KEY"
 )
@@ -51,7 +50,7 @@ type Options struct {
 	RetryBackoff  int
 }
 
-func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner, options Options) *objectBucketClaimReconciler {
+func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner _interface.Provisioner, options Options) *objectBucketClaimReconciler {
 	if options.RetryInterval < defaultRetryBaseInterval {
 		options.RetryInterval = defaultRetryBaseInterval
 	}
@@ -174,7 +173,7 @@ func (r *objectBucketClaimReconciler) classFromClaim(obc *v1alpha1.ObjectBucketC
 func newCredentailsSecret(obc *v1alpha1.ObjectBucketClaim, keys *auth.S3AccessKeys) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: v1.ObjectMeta{
-			GenerateName: "obc.Name" + "-secret",
+			GenerateName: obc.Name,
 			Namespace:    obc.Namespace,
 			Finalizers:   []string{finalizer},
 		},
@@ -195,7 +194,6 @@ func newBucketConfigMap(ob *v1alpha1.ObjectBucket, obc *v1alpha1.ObjectBucketCla
 			bucketName: ob.Spec.BucketName,
 			bucketHost: ob.Spec.Host,
 			bucketPort: strconv.Itoa(ob.Spec.Port),
-			bucketSSL:  strconv.FormatBool(ob.Spec.SSL),
 		},
 	}
 }
