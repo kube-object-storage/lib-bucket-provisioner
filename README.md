@@ -58,7 +58,7 @@ Bucket binding requires these steps before the bucket is accessible to an app po
 ### Bucket Deletion
 When an OBC is deleted the `Delete()` method is always called regardless of the OB's _reclaimPolicy_.
 This differs from the Kubernetes external lib implementation which only invokes `Delete()` when the _reclaimPolicy_ == "Delete".
-The reason to always call `Delete()`is so that provisioners can perform any needed bucklet cleanup, even when the storage class dictates that the underlying bucket should be retained.
+The reason to always call `Delete()`is so that provisioners can perform any needed bucket cleanup, even when the storage class dictates that the underlying bucket should be retained.
 For example, ACLs and related user cleanup could be done if desired by the provisioner.
 But it also places an extra burden on provisioners to support the _reclaimPolicy_ (which resides in the OB).
 
@@ -68,10 +68,8 @@ This scenario is handled by the OB watch which will delete orphaned OBs (and Sec
 However, since there are no watches for Secrets and ConfigMaps, it could be possible for an OBC and OB to be deleted but not the related Secret and/or ConfigMap.
 This scenario is not expected since the library will delete the Secret and ConfigMap before deleting the OB.
 
-To reduce the chances of an admin deleting a _bound_ OB, a finalizer is added to the OB. 
-The library's OBC controller will remove the finalizer when an OBC is deleted.
-Additionally, the lib's OB controller will detect bound OBs missing their OBC.
-The status in these OBs will be set to "released" to reflect that they are orphaned.
+To reduce the chances of an admin deleting a _bound_ OB, and/or Secret and/or ConfigMap, a finalizer is added to these resources. 
+The library's OBC controller will remove the finalizers when an OBC is deleted.
 
 **Note:** the bucket library has no mechanism to prevent an OBC from being deleted when one or more pods indirectly reference the OBC via the Secret and ConfigMap.
 This concept came late for PVCs, see [merged pr](https://github.com/kubernetes/community/pull/1174/files), and may be even more difficult to implement for OBCs.
@@ -101,7 +99,7 @@ type Provisioner interface {
 }
 ```
 
-#### ObjectBucketClaim
+##### ObjectBucketClaim
 ```golang
 type ObjectBucketClaim struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -117,7 +115,7 @@ type ObjectBucketClaimSpec struct {
 }
 ```
 
-#### ObjectBucket
+##### ObjectBucket
 ```golang
 type ObjectBucket struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -147,7 +145,7 @@ type ObjectBucketSpec struct {
 }
 ```
 
-#### S3AccessKeys
+##### S3AccessKeys
 ```golang
 type S3AccessKeys struct {
 	AccessKey, SecretKey string
@@ -162,25 +160,26 @@ On the other hand, all provisioners watch all OBs.
 The OBC watch performs the following:
 + detects a new OBC:
   + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
-  + generates random name if requested
+  + generate random name if requested
   + invokes the `Provision()` method for the provisioner defined in the OBC's storage class
   + if the provisioning is successful:
-    + creates a global OB which references the OBC and storage class and contains store-specific bucket info
-    + creates a Secret, in the namespace as the OBC, containing the bucket credentials returned by the provisioner
-    + creates the ConfigMap, in the namespace as the OBC, containing the bucket's endpoint info
+    + create a global OB which references the OBC and storage class and contains store-specific bucket info
+    + create a Secret, in the namespace as the OBC, containing the bucket credentials returned by the provisioner
+    + create the ConfigMap, in the namespace as the OBC, containing the bucket's endpoint info
   + if the provisioner returns an error:
     + retry:
-      + call `Delete()` in case the bucket was created (want idempotency)
+      + call `Delete()` in case the bucket was created (want idempotency for next try)
       + call `Provision()`
 + detects OBC update events:
   + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
-  + ensures the expected OB, Secret and ConfigMap are present
-  + syncs the OB's status to reflect the OBC's status
+  + ensure the expected OB, Secret and ConfigMap are present
+  + if all present:
+    + update OBC status to "Bound"
+  + sync the OB's status to match the OBC's status
 + detects OBC delete events:
   + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
-  + if the associated OB's _reclaimPolicy_ == "Delete":
-    + invokes the `Delete()` method for the provisioner defined in the OBC's storage class
-  + deletes the related Secret, ConfigMap (in the OBC's namespace), and OB
+  + invoke the `Delete()` method for the provisioner defined in the OBC's storage class
+  + delete the related Secret, ConfigMap and the OB (in that order)
 
 The OB watch performs the following:
 + detects a new OB:
@@ -188,9 +187,8 @@ The OB watch performs the following:
     + if yes, sets status to "pending"
     + if no, sets status to "released" since this OB is orphaned
 + detects OB update events:
-  + same OBC check and status update as for _new_ OB
-  + syncs the OBC's status to reflect the OB's status
-+ detects and ignores OB delete events 
+  + if status == "released" then delete OB (and ConfigMap and/or Secret if needed)
++ ignores OB delete events (deletes events can be lost)
 
 ### Limitations
 This proposal differs from the Kubernetes external provisioner lib in that there is no centralized, _core_ bucket/claim controller to handle missed events by performing periodic syncs.
