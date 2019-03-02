@@ -3,6 +3,18 @@ Kubernetes natively supports dynamic provisioning for many types of file and blo
 This repo is a temporary placeholder for an object store bucket provisioning library, very similar to the Kubernetes [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go) library.
 The goal is to eventually move this repo to a Kubernetes repo within _sig-storage/_.
 
+### Table Of Contents
+1. [Assumptions](#assumptions)
+1. [Design](#design)
+1. [Binding](#binding)
+1. [Bucket Deletion](#bucket-deletion)
+1. [Bucket Sharing](#bucket-sharing)
+1. [Quota](#quota)
+1. [Watches](#watches)
+1. [Limitations](#limitations)
+1. [API Specifications](#api-specifications)
+1. [Interfaces](#interfaces)
+
 ### Assumptions
 1. The object store is represented by a Kubernetes service.
 1. _Brownfield_, meaning existing buckets, is not supported (yet). _New_, dynamic bucket provisioning is the focus of this proposal.
@@ -84,87 +96,6 @@ S3 bucket size cannot be specified; however, bucket size can be monitored in S3.
 The number of buckets can be controlled by a resource quota once [this k8s pr](https://github.com/kubernetes/kubernetes/pull/72384) is merged.
 Until then, Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the number of buckets.
 
-### Interfaces -- Provision() and Delete()
-The bucket provisioning library defines two interfaces which all provsioners must support.
-```golang
-// Provisioner the interface to be implemented by users of this
-// library and executed by the Reconciler
-type Provisioner interface {
-	// Provision should be implemented to handle bucket creation
-	// for the target object store
-	Provision(ObjectBucketOptions) (*v1alpha1.ObjectBucket, *auth.S3AccessKeys, error)
-	// Delete should be implemented to handle bucket deletion
-	// for the target object store
-	Delete(claim *v1alpha1.ObjectBucketClaim) error
-}
-```
-##### ObjectBucketOptions
-```golang
-type ObjectBucketOptions struct {
-	// Reclamation policy for a object volume
-	ReclaimPolicy v1.PersistentVolumeReclaimPolicy
-	// Suggested bucket name. Has been randomized if `generateBucketName` was defined.
-	BucketName string
-	// OBC is reference to the claim that lead to provisioning of a new bucket.
-	OBC *v1alpha1.ObjectBucketClaim
-	// Bucekt provisioning parameters from StorageClass
-	Parameters map[string]string
-}
-```
-
-##### ObjectBucketClaim
-```golang
-type ObjectBucketClaim struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   ObjectBucketClaimSpec   `json:"spec,omitempty"`
-	Status ObjectBucketClaimStatus `json:"status,omitempty"`
-}
-```
-```golang
-type ObjectBucketClaimSpec struct {
-	StorageClass string
-}
-```
-
-##### ObjectBucket
-```golang
-type ObjectBucket struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   ObjectBucketSpec   `json:"spec,omitempty"`
-	Status ObjectBucketStatus `json:"status,omitempty"`
-}
-```
-```golang
-type ObjectBucketSpec struct {
-	// BucketName the base name of the bucket
-	BucketName string `json:"bucketName"`
-	// Host the host URL of the object store with
-	Host string `json:"host"`
-	// Region the region of the bucket within an object store
-	Region string `json:"region"`
-	// Port the insecure port number of the object store, if it exists
-	Port int `json:"port"`
-	// SecurePort the secure port number of the object store, if it exists
-	SecurePort int `json:"securePort"`
-	// SSL true if the connection is secured with SSL, false if it is not.
-	SSL bool `json:"ssl"`
-
-	// Versioned true if the object store support versioned buckets, false if not
-	Versioned bool `json:"versioned,omitempty"`
-}
-```
-
-##### S3AccessKeys
-```golang
-type S3AccessKeys struct {
-	AccessKey, SecretKey string
-}
-```
-
 ### Watches
 The bucket provisioning library provides watches for OBCs across all namespaces, and for OBs.
 Each binary importing the lib is performing the same watches; however, the OBC watch quickly skips OBCs that do not target the specific provisioner.
@@ -221,7 +152,7 @@ Lastly, if OB watches (which don't skip out early like OBC watches) are too reso
 solution could be to use [_leader election_](https://github.com/kubernetes/client-go/blob/master/tools/leaderelection/example/main.go) when more than one provisioner is running.
 The "leader" provisioner will watch OBs (in addition to OBCs) while the non-leaders only watch OBCs.
 
-## API Specifications (subject to change)
+## API Specifications
 
 ### OBC Custom Resource (User Defined)
 ```yaml
@@ -391,7 +322,6 @@ status:
     - _bound_: the operator finished processing the request and linked the OBC and OB
     - _released_: the OBC has been deleted, leaving the OB unclaimed.
 
-
 ### StorageClass (sample for rook-ceph-rgw provider)
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -452,6 +382,88 @@ spec:
   version: v1alpha1
   subresources:
     status: {}
+```
+
+### Interfaces
+#### Provision() and Delete()
+The bucket provisioning library defines two interfaces which all provsioners must support.
+```golang
+// Provisioner the interface to be implemented by users of this
+// library and executed by the Reconciler
+type Provisioner interface {
+	// Provision should be implemented to handle bucket creation
+	// for the target object store
+	Provision(ObjectBucketOptions) (*v1alpha1.ObjectBucket, *auth.S3AccessKeys, error)
+	// Delete should be implemented to handle bucket deletion
+	// for the target object store
+	Delete(claim *v1alpha1.ObjectBucketClaim) error
+}
+```
+##### ObjectBucketOptions
+```golang
+type ObjectBucketOptions struct {
+	// Reclamation policy for a object volume
+	ReclaimPolicy v1.PersistentVolumeReclaimPolicy
+	// Suggested bucket name. Has been randomized if `generateBucketName` was defined.
+	BucketName string
+	// OBC is reference to the claim that lead to provisioning of a new bucket.
+	OBC *v1alpha1.ObjectBucketClaim
+	// Bucekt provisioning parameters from StorageClass
+	Parameters map[string]string
+}
+```
+
+##### ObjectBucketClaim
+```golang
+type ObjectBucketClaim struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ObjectBucketClaimSpec   `json:"spec,omitempty"`
+	Status ObjectBucketClaimStatus `json:"status,omitempty"`
+}
+```
+```golang
+type ObjectBucketClaimSpec struct {
+	StorageClass string
+}
+```
+
+##### ObjectBucket
+```golang
+type ObjectBucket struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ObjectBucketSpec   `json:"spec,omitempty"`
+	Status ObjectBucketStatus `json:"status,omitempty"`
+}
+```
+```golang
+type ObjectBucketSpec struct {
+	// BucketName the base name of the bucket
+	BucketName string `json:"bucketName"`
+	// Host the host URL of the object store with
+	Host string `json:"host"`
+	// Region the region of the bucket within an object store
+	Region string `json:"region"`
+	// Port the insecure port number of the object store, if it exists
+	Port int `json:"port"`
+	// SecurePort the secure port number of the object store, if it exists
+	SecurePort int `json:"securePort"`
+	// SSL true if the connection is secured with SSL, false if it is not.
+	SSL bool `json:"ssl"`
+
+	// Versioned true if the object store support versioned buckets, false if not
+	Versioned bool `json:"versioned,omitempty"`
+}
+```
+
+##### S3AccessKeys
+```golang
+type S3AccessKeys struct {
+	AccessKey, SecretKey string
+}
 ```
 
 ### Notes/Future Considerations
