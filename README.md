@@ -1,59 +1,47 @@
 ## Generic Bucket Provisioning
-Kubernetes natively supports dynamic provisioning for many types of file and
-block storage, but lacks support for object bucket provisioning. 
-This repo is a temporary placeholder for an object store bucket provisioning library,
-very similar to the Kubernetes 
-[sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go)
-library. The goal is to eventually move this repo to a Kubernetes repo within _sig-storage/_.
+Kubernetes natively supports dynamic provisioning for many types of file and block storage, but lacks support for object bucket provisioning. 
+This repo is a temporary placeholder for an object store bucket provisioning library, very similar to the Kubernetes [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go) library.
+The goal is to eventually move this repo to a Kubernetes repo within _sig-storage/_.
 
 ### Assumptions
 1. The object store is represented by a Kubernetes service.
-1. _Brownfield_, meaning existing buckets, is not supported (yet). _New_, dynamic
-bucket provisioning is the focus of this proposal.
+1. _Brownfield_, meaning existing buckets, is not supported (yet). _New_, dynamic bucket provisioning is the focus of this proposal.
 
 ### Design
-The time has come where we can support a bucket provisioning API similar to that used for
-Persistent Volumes. We propose two new Custom Resources to abstract an object store bucket
-and a claim/request for such a bucket.  It's important to keep in mind that this proposal 
-only defines bucket and bucket claim APIs and related library code. The lib ensures that 
-the _contract_ made to app developers regarding the artifacts of bucket creation is guaranteed.
+The time has come where we can support a bucket provisioning API similar to that used for Persistent Volumes.
+We propose two new Custom Resources to abstract an object store bucket and a claim/request for such a bucket.
+It's important to keep in mind that this proposal  only defines bucket and bucket claim APIs and related library code.
+The lib ensures that  the _contract_ made to app developers regarding the artifacts of bucket creation is guaranteed.
 The actual creation of physical buckets belongs to each object store provisioner.
-The bucket library handles watches on bucket claims and the (generated) bucket objects, reconciles
-state-of-the-world, creates the artifacts (Secret, ConfigMap) consumed by app pods, and
-deletes resources generated on behalf of the claim.
+The bucket library handles watches on bucket claims and the (generated) bucket objects, reconciles state-of-the-world, creates the artifacts (Secret, ConfigMap) consumed by app pods, and deletes resources generated on behalf of the claim.
 
-An `ObjectBucketClaim` (OBC) is similar in usage to a Persistent Volume Claim and an `ObjectBucket`
-(OB) is the Persistent Volume equivalent. 
-An OBC is namespaced and references a storage class which defines the object store.
-An OB is non-namespaced (global), typically not visible to end users, and will contain
-info pertinent to the provisioned bucket. Like PVs, there is a 1:1 binding of an OBC to an OB.
-Bucket binding refers to the actual bucket being created by the underlying object store provider,
-and the generation of artifacts which will be consumed by application pods.
+An `ObjectBucketClaim` (OBC) is similar in usage to a Persistent Volume Claim and an `ObjectBucket` (OB) is the Persistent Volume equivalent. 
+An OBC is namespaced and references a storage class which defines the object store and provisioner.
+An OB is non-namespaced (global), typically not visible to end users, and will contain info pertinent to the provisioned bucket.
+Like PVs, there is a 1:1 binding of an OBC to an OB.
+Bucket binding refers to the actual bucket being created by the underlying object store provider, and the generation of artifacts which will be consumed by application pods.
 The details of the object store (ceph, minio, cloud, on-prem) are not visible to the app pod.
 The same app can consume AWS S3 in the cloud or Ceph-RGW on-prem with no changes.
 
-As is true for dynamic PV provisioning, a bucket provisioner needs to be running
-for each object store supported by the Kubernetes cluster. For example, if the
-underlying object store is AWS S3, the developer will create an OBC, referencing
-a Storage Class which references the S3 store. The cluster has the S3 provisioner
-running which is watching (via the bucket lib) for OBCs that it knows how to handle, while
-other OBCs are ignored. Additionally, the same cluster can have a rook-ceph RGW provisioner
-running which also watches OBCs (again via the lib). Like the S3 proivisioner, it only
-handles OBCs that it knows how to provision and skips the rest. In this proposal, the
-bucket provisioners will be simple-to-write binaries because the bucket provisioning lib
-handles the bulk of the work. Each provisioner is only responsible for writing `Provision()`
-and `Delete()`functions and a short `main()` function.
+As is true for dynamic PV provisioning, a bucket provisioner needs to be running for each object store supported by the Kubernetes cluster.
+For example, if the underlying object store is AWS S3, the developer will create an OBC, referencing
+a Storage Class which references the S3 store.
+The cluster has the S3 provisioner running which is watching (via the bucket lib) for OBCs that it knows how to handle, while
+other OBCs are ignored.
+Additionally, the same cluster can have a rook-ceph RGW provisioner running which also watches OBCs (again via the lib).
+Like the S3 proivisioner, it only handles OBCs that it knows how to provision and skips the rest.
+In this proposal, the bucket provisioners will be simple-to-write binaries because the bucket provisioning lib
+handles the bulk of the work.
+Each provisioner is only responsible for writing `Provision()` and `Delete()`functions and a short `main()` function.
 
 The `Provision()` and `Delete()`functions are interfaces defined in the bucket library.
-To provision a bucket, all provisioners are required to return an OB struct (which is used to
-construct the ConfigMap) and the bucket credentials (which are used to create the
-Secret). The Secret and ConfigMap have deterministic names, namespaces, and property keys.
-An app pod consuming a bucket need only be aware of the Secret name and keys, and the
-ConfigMap name and fields. The app pod will not run until the bucket has been provisioned
-and can be accessed. This is true even if the pod is created prior to the OBC.
+To provision a bucket, all provisioners are required to return an OB struct (which is used to construct the ConfigMap) and the bucket credentials (which are used to create the Secret).
+The Secret and ConfigMap have deterministic names, namespaces, and property keys.
+An app pod consuming a bucket need only be aware of the Secret name and keys, and the ConfigMap name and fields.
+The app pod will not run until the bucket has been provisioned and can be accessed.
+This is true even if the pod is created prior to the OBC.
 
-**Note:** even though the PV-PVC design supports static provisioning, only
-dynamic provisioning is supported by the bucket lib at this time.
+**Note:** even though the PV-PVC design supports static provisioning, only dynamic provisioning is supported by the bucket lib at this time.
 
 ### Binding
 Bucket binding requires these steps before the bucket is accessible to an app pod:
@@ -62,55 +50,114 @@ Bucket binding requires these steps before the bucket is accessible to an app po
 1. the creation of a Secret, based on the provisioner's returned credentials, residing in the OBC's namespace (performed by bucket lib).
 1. the creation of a ConfigMap which contains the endpoint of the bucket (performed by bucket lib).
 
-`Bound` is one of the supported phases of an OB and an OBC. `Bound` indicates that a
-bucket and all related artifacts have been created on behalf of the OBC. Once a bucket claim
-is bound the app pod can run, meaning the Secret (containing access credentials) and the
-ConfigMap (containing the bucket endpoint) are mounted and consumable by the pod.
+`Bound` is one of the supported phases of an OB and an OBC.
+`Bound` indicates that a bucket and all related artifacts have been created on behalf of the OBC. Once a bucket claim is bound the app pod can run, meaning the Secret (containing access credentials) and the ConfigMap (containing the bucket endpoint) are mounted and consumable by the pod.
 
-**Note:** bucket provisioners that wish to prevent the OBC author from creating
-buckets outside of the Kubernetes cluster should return credentials lacking bucket
-CREATE access.
+**Note:** bucket provisioners that wish to prevent the OBC author from creating buckets outside of the Kubernetes cluster should return credentials lacking bucket CREATE access.
 
 ### Bucket Deletion
-Contsistent with PVCs, when an OBC is deleted **and** the OB's _reclaimPolicy_ is set
-to "delete", the assoicated OB is also deleted. This is true regardless of the `Delete()`
-implementation by the provisioner. For example, the provisioner could decide to not
-delete the underlying bucket storage, but the OB will still be deleted by the library.
-If the _reclaimPolicy_ is not set to "delete" then the provisioner's `Delete()` method is
-not invoked and the associated OB is not deleted. In this case, the remaining OB's status will
-be set to "retained", indicating that the OBC has been deleted but the bucket is still available.
-Independent of the _reclaimPolicy_, the generated Secret and ConfigMap are always deleted
-by the bucket lib when an OBC is deleted. 
+When an OBC is deleted the `Delete()` method is always called regardless of the OB's _reclaimPolicy_.
+This differs from the Kubernetes external lib implementation which only invokes `Delete()` when the _reclaimPolicy_ == "Delete".
+The reason to always call `Delete()`is so that provisioners can perform any needed bucklet cleanup, even when the storage class dictates that the underlying bucket should be retained.
+For example, ACLs and related user cleanup could be done if desired by the provisioner.
+But it also places an extra burden on provisioners to support the _reclaimPolicy_ (which resides in the OB).
+
+The bucket library always deletes all generated artifacts upon an OBC delete.
+It is possible that an OBC delete event is missed and therefore an OB remains but its associated OBC has been deleted.
+This scenario is handled by the OB watch which will delete orphaned OBs (and Secrets and ConfigMaps, if needed).
+However, since there are no watches for Secrets and ConfigMaps, it could be possible for an OBC and OB to be deleted but not the related Secret and/or ConfigMap.
+This scenario is not expected since the library will delete the Secret and ConfigMap before deleting the OB.
 
 To reduce the chances of an admin deleting a _bound_ OB, a finalizer is added to the OB. 
-The library's OBC controller will remove the finalizer when an OBC is deleted. Additionally,
-the lib's OB controller will detect bound OBs missing their OBC. The status in these OBs
-will be set to "released" to reflect that they are orphaned.
+The library's OBC controller will remove the finalizer when an OBC is deleted.
+Additionally, the lib's OB controller will detect bound OBs missing their OBC.
+The status in these OBs will be set to "released" to reflect that they are orphaned.
 
-**Note:** the bucket library has no mechanism to prevent an OBC from being deleted when one or
-more pods indirectly reference the OBC via the Secret and ConfigMap. This concept came late
-for PVCs, see
-[merged pr](https://github.com/kubernetes/community/pull/1174/files), and may be even more
-difficult to implement for OBCs.
+**Note:** the bucket library has no mechanism to prevent an OBC from being deleted when one or more pods indirectly reference the OBC via the Secret and ConfigMap.
+This concept came late for PVCs, see [merged pr](https://github.com/kubernetes/community/pull/1174/files), and may be even more difficult to implement for OBCs.
 
 ### Bucket Sharing
-A bucket can be shared, at least within the same namespace. The reason for this is that
-the app pods never reference the OBC (or OB) directly, but instead consume a Secret and
-ConfigMap in order to access the bucket. Since more than one pod can ingest the same 
-Secert and ConfigMap, a bucket can be shared. _TODO: verify._
+A bucket can be shared, at least within the same namespace.
+The reason for this is that the app pods never reference the OBC (or OB) directly, but instead consume a Secret and ConfigMap in order to access the bucket.
+Since more than one pod can ingest the same Secert and ConfigMap, a bucket can be shared. _TODO: verify._
 
 ### Quota
-S3 bucket size cannot be specified; however, bucket size can be monitored in S3. The number
-of buckets can be controlled by a resource quota once
-[this k8s pr](https://github.com/kubernetes/kubernetes/pull/72384) is merged. Until then, 
-Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the 
-number of buckets.
+S3 bucket size cannot be specified; however, bucket size can be monitored in S3.
+The number of buckets can be controlled by a resource quota once [this k8s pr](https://github.com/kubernetes/kubernetes/pull/72384) is merged.
+Until then, Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the number of buckets.
+
+### Interfaces -- Provision() and Delete()
+The bucket provisioning library defines two interfaces which all provsioners must support.
+```golang
+// Provisioner the interface to be implemented by users of this
+// library and executed by the Reconciler
+type Provisioner interface {
+	// Provision should be implemented to handle bucket creation
+	// for the target object store
+	Provision(*v1alpha1.ObjectBucketClaim) (*v1alpha1.ObjectBucket, *auth.S3AccessKeys, error)
+	// Delete should be implemented to handle bucket deletion
+	// for the target object store
+	Delete(claim *v1alpha1.ObjectBucketClaim) error
+}
+```
+
+#### ObjectBucketClaim
+```golang
+type ObjectBucketClaim struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ObjectBucketClaimSpec   `json:"spec,omitempty"`
+	Status ObjectBucketClaimStatus `json:"status,omitempty"`
+}
+```
+```golang
+type ObjectBucketClaimSpec struct {
+	StorageClass string
+}
+```
+
+#### ObjectBucket
+```golang
+type ObjectBucket struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   ObjectBucketSpec   `json:"spec,omitempty"`
+	Status ObjectBucketStatus `json:"status,omitempty"`
+}
+```
+```golang
+type ObjectBucketSpec struct {
+	// BucketName the base name of the bucket
+	BucketName string `json:"bucketName"`
+	// Host the host URL of the object store with
+	Host string `json:"host"`
+	// Region the region of the bucket within an object store
+	Region string `json:"region"`
+	// Port the insecure port number of the object store, if it exists
+	Port int `json:"port"`
+	// SecurePort the secure port number of the object store, if it exists
+	SecurePort int `json:"securePort"`
+	// SSL true if the connection is secured with SSL, false if it is not.
+	SSL bool `json:"ssl"`
+
+	// Versioned true if the object store support versioned buckets, false if not
+	Versioned bool `json:"versioned,omitempty"`
+}
+```
+
+#### S3AccessKeys
+```golang
+type S3AccessKeys struct {
+	AccessKey, SecretKey string
+}
+```
 
 ### Watches
 The bucket provisioning library provides watches for OBCs across all namespaces, and for OBs.
-Each binary importing the lib is performing the same watches; however, the OBC watch quickly
-skips OBCs that do not target the specific provisioner. On the other hand, all provisioners
-watch all OBs. 
+Each binary importing the lib is performing the same watches; however, the OBC watch quickly skips OBCs that do not target the specific provisioner.
+On the other hand, all provisioners watch all OBs. 
 
 The OBC watch performs the following:
 + detects a new OBC:
@@ -146,27 +193,22 @@ The OB watch performs the following:
 + detects and ignores OB delete events 
 
 ### Limitations
-This proposal also differs from the Kubernetes external provisioner lib in that there is no centralized,
-_core_ bucket/claim controller to handle missed events by performing periodic syncs. For example, in the
-bucket lib, each provisioner watches OBs and updates orphaned OBs when its OBC is not found.
+This proposal differs from the Kubernetes external provisioner lib in that there is no centralized, _core_ bucket/claim controller to handle missed events by performing periodic syncs.
+For example, in the bucket lib, each provisioner watches OBs and updates orphaned OBs when its OBC is not found.
 With an understanding of the Kubernetes approach, it is reasonable to suggest that we also need a centralized
-bucket controller in addition to/or in lieu of the library. However, the cost to the cluster of each 
-provisioner performing OB watches is mitigated by:
+bucket controller in addition to/or in lieu of the library.
+However, the cost to the cluster of each provisioner performing OB watches is mitigated by:
 +  OBs, OBCs and associated Storage Classes being cached for fast access, bypassing the API,
 +  the number of bucket provisioners per cluster is anticipated as being relatively small.
 
-There is an edge case where if only a single provisioner is running, an OBC is deleted, the provisioner
-dies before deleting the OB (and/or Secret, and/or ConfigMap), and **no** provisioner is run again, then
-that OB remains orphaned with no change to its status.  If something similar happened in Kubernetes the
-central controller would sync and detect the orphaned OB. A simple solution is to run each provisioner
-in a Deployment so that a provisioner is always running. When a provisioner restarts it will fetch all OBs
-and thus detect this orphan case.
+There is an edge case where if only a single provisioner is running, an OBC is deleted, the provisioner dies before deleting the OB, and **no** provisioner is run again, then that OB remains orphaned with no change to its status.
+If something similar happened in Kubernetes the central controller would sync and detect the orphaned OB.
+A simple solution is to run each provisioner in a Deployment so that a provisioner is always running.
+When a provisioner restarts it will fetch all OBs and thus detect this orphan case.
 
 Lastly, if OB watches (which don't skip out early like OBC watches) are too resource hungry then a possible
-solution could be to use
-[_leader election_](https://github.com/kubernetes/client-go/blob/master/tools/leaderelection/example/main.go)
-when more than one provisioner is running. The "leader" provisioner will watch OBs (in addition to OBCs)
-while the non-leaders only watch OBCs.
+solution could be to use [_leader election_](https://github.com/kubernetes/client-go/blob/master/tools/leaderelection/example/main.go) when more than one provisioner is running.
+The "leader" provisioner will watch OBs (in addition to OBCs) while the non-leaders only watch OBCs.
 
 ## API Specifications (subject to change)
 
@@ -400,3 +442,12 @@ spec:
   subresources:
     status: {}
 ```
+
+### Notes/Future Considerations
+
++ Brownfield - what if user creates a namespaced OB. The OB's storage class still defines the store name/ns and could
+be the same SC used in an OBC, but the provisioner is ignored. Namespaced OBs never have OBCs and thus are never
+considered orphaned. Since no provisoner is needed we'd have to have some other controller running that watched OBs.
+
++ Interfaces - we could define 2 additional, optional interface types. A `Credential()` method accepts an OB and returns a credential struct. A `Bind()` method accepts an OB and credentials and binds the bucket to the creds.
+
