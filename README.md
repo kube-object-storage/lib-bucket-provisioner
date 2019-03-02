@@ -60,7 +60,7 @@ Bucket binding requires these steps before the bucket is accessible to an app po
 1. generation of a random bucket name when requested (performed by bucket lib).
 1. the creation of the physical bucket with owner credentials (performed by provisioner).
 1. the creation of a Secret, based on the provisioner's returned credentials, residing in the OBC's namespace (performed by bucket lib).
-1. the creation of a ConfigMap which contains the endpoint of the bucket (performed by bucket lib).
+1. the creation of a ConfigMap, based on the provisioner's returned OB, residing in the OBC's namespace (performed by bucket lib).
 
 `Bound` is one of the supported phases of an OB and an OBC.
 `Bound` indicates that a bucket and all related artifacts have been created on behalf of the OBC. Once a bucket claim is bound the app pod can run, meaning the Secret (containing access credentials) and the ConfigMap (containing the bucket endpoint) are mounted and consumable by the pod.
