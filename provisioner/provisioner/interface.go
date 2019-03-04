@@ -1,4 +1,4 @@
-package _interface
+package provisioner
 
 import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"

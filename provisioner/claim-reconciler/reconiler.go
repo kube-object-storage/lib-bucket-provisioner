@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/auth"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/interface"
+	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
@@ -21,7 +21,7 @@ import (
 type objectBucketClaimReconciler struct {
 	client          client.Client
 	provisionerName string
-	provisioner     _interface.Provisioner
+	provisioner     provisioner.Provisioner
 	retryInterval   time.Duration
 	retryTimeout    time.Duration
 	retryBackoff    int
@@ -40,8 +40,9 @@ const (
 	bucketName      = "S3_BUCKET_NAME"
 	bucketHost      = "S3_BUCKET_HOST"
 	bucketPort      = "S3_BUCKET_PORT"
-	bucketAccessKey = "BUCKET_ACCESS_KEY_ID"
-	bucketSecretKey = "BUCKET_SECRET_KEY"
+	bucketAccessKey = "S3_BUCKET_ACCESS_KEY_ID"
+	bucketSecretKey = "S3_BUCKET_SECRET_KEY"
+	bucketURL       = "S3_BUCKET_URL"
 )
 
 type Options struct {
@@ -50,7 +51,7 @@ type Options struct {
 	RetryBackoff  int
 }
 
-func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner _interface.Provisioner, options Options) *objectBucketClaimReconciler {
+func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner, options Options) *objectBucketClaimReconciler {
 	if options.RetryInterval < defaultRetryBaseInterval {
 		options.RetryInterval = defaultRetryBaseInterval
 	}
@@ -71,7 +72,7 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner _i
 }
 
 // TODO this is the guts of our controller.
-//   `request` is a 'namespace/name' of a resource.
+//   `request` is a 'namespace/name' object key.
 func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	// /   ///   ///   ///   ///   ///   ///
 	// TODO    CAUTION! UNDER CONSTRUCTION!
@@ -158,7 +159,7 @@ func (r *objectBucketClaimReconciler) shouldProvision(class *storagev1.StorageCl
 }
 
 func (r *objectBucketClaimReconciler) classFromClaim(obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
-	className := obc.Spec.StorageClass
+	className := obc.Spec.StorageClassName
 	if className == "" {
 		return nil, fmt.Errorf("got empty string storage class name")
 	}
@@ -191,9 +192,9 @@ func newBucketConfigMap(ob *v1alpha1.ObjectBucket, obc *v1alpha1.ObjectBucketCla
 			Namespace: obc.Namespace,
 		},
 		Data: map[string]string{
-			bucketName: ob.Spec.BucketName,
-			bucketHost: ob.Spec.Host,
-			bucketPort: strconv.Itoa(ob.Spec.Port),
+			bucketName: obc.Spec.BucketName,
+			bucketHost: ob.Spec.BucketHost,
+			bucketPort: strconv.Itoa(ob.Spec.BucketPort),
 		},
 	}
 }

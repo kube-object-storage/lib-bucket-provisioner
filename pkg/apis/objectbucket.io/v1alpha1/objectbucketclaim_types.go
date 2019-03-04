@@ -9,7 +9,7 @@ import (
 // ObjectBucketClaimSpec defines the desired state of ObjectBucketClaim
 type ObjectBucketClaimSpec struct {
 	// StorageClass names the StorageClass object representing the desired provisioner and parameters
-	StorageClass string
+	StorageClassName string
 	// BucketName (not recommended) the name of the bucket.  Caution!
 	// In-store bucket names may collide across namespaces.  If you define
 	// the name yourself, try to make it as unique as possible.
@@ -17,7 +17,7 @@ type ObjectBucketClaimSpec struct {
 	// GenerateBucketName (recommended) a prefix for a bucket name to be
 	// followed by a hyphen and 5 random characters. Protects against
 	// in-store name collisions.
-	GeneratBucketName string `json:"generatBucketName,omitempty"`
+	GeneratBucketName string `json:"generateBucketName,omitempty"`
 	// SSL whether connection to the bucket requires SSL authentication or not
 	SSL bool `json:"ssl"`
 	// AWS S3 predefined bucket ACLs.
@@ -31,15 +31,16 @@ type ObjectBucketClaimSpec struct {
 	Versioned bool `json:"versioned"`
 	// AdditionalConfig gives non-AWS S3 providers a location to set
 	// proprietary config values (tenant, namespace, etc)
-	//AdditionalConfig map[string]interface{} `json:"additionalConfig"`
+	AdditionalConfig map[string]string `json:"additionalConfig"`
 }
 
 type ObjectBucketClaimStatusPhase string
 
 const (
-	ObjectBucketClaimStatusPhasePending = "pending"
-	ObjectBucketClaimStatusPhaseBound   = "bound"
-	ObjectBucketClaimStatusPhaseLost    = "lost"
+	ObjectBucketClaimStatusPhasePending  = "pending"
+	ObjectBucketClaimStatusPhaseBound    = "bound"
+	ObjectBucketClaimStatusPhaseReleased = "released"
+	ObjectBucketClaimStatusPhaseFailed   = "failed"
 )
 
 // ObjectBucketClaimStatus defines the observed state of ObjectBucketClaim
