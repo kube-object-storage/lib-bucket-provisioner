@@ -302,8 +302,8 @@ metadata:
     objectbucket.io/PROVISIONER-NAME: [3]
 spec:
   objectBucketSource: [4]
-    provider: ceph.rook.io/object
-  storageClassName: OBCs-STORAGE-CLASS [5]
+    provider: ceph.rook.io/objectTOT
+  storageClassName: OBCs-SC-NAME [5]  # TODO: or StorageClassRef and thus no need for separate reclaimPolicy?
   claimRef: objectreference [6]
   reclaimPolicy: {"Delete", "Retain"} [7]
 status:
