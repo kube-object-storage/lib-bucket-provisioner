@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/auth"
 	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -74,6 +74,11 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner pr
 // TODO this is the guts of our controller.
 //   `request` is a 'namespace/name' object key.
 func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+
+	handleErr := func(format string, a ...interface{}) (reconcile.Result, error) {
+		return reconcile.Result{}, fmt.Errorf(format, a...)
+	}
+
 	// /   ///   ///   ///   ///   ///   ///
 	// TODO    CAUTION! UNDER CONSTRUCTION!
 	// /   ///   ///   ///   ///   ///   ///
@@ -87,67 +92,64 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 	obc := &v1alpha1.ObjectBucketClaim{}
 	if err := r.client.Get(context.TODO(), request.NamespacedName, obc); err != nil {
-		return reconcile.Result{}, err
+		return handleErr("error getting claim %q: %v", obc.Name, err)
 	}
 
-	claimClass, err := r.classFromClaim(obc)
+	className, err := extractClaimClass(obc)
 	if err != nil {
-		return reconcile.Result{}, err
+		return handleErr("%v", err)
 	}
 
-	if !r.shouldProvision(claimClass) {
-		return reconcile.Result{}, fmt.Errorf("claim failed shouldProvision check")
+	storageClass, err := getStorageClassByName(className, r.client)
+	if err != nil && storageClass == nil {
+		return handleErr("unable to get storageClass %q of claim %q: %v", className, obc.Name, err)
 	}
 
-	// TODO wrap in retry logic
-	ob, s3keys, err := r.provisioner.Provision(obc)
+	if !r.shouldProvision(storageClass) {
+		return handleErr("claim failed shouldProvision check")
+	}
+
+	reclaimPolicy, err := translateReclaimPolicy(*storageClass.ReclaimPolicy)
 	if err != nil {
-		return reconcile.Result{}, err
+		return handleErr("error translating core.PersistentVolumeReclaimPolicy %q to v1alpha1.ReclaimPolicy: %v", storageClass.ReclaimPolicy, err)
 	}
+
+	options := &provisioner.BucketOptions{
+		ReclaimPolicy:     reclaimPolicy,
+		ObjectBucketName:  obc.Namespace + "-" + obc.Name,
+		BucketName:        "", // TODO name generator function
+		ObjectBucketClaim: obc,
+		Parameters:        storageClass.Parameters,
+	}
+
+	// TODO a failure on any process below should call Delete()
+	ob, s3keys, err := r.provisioner.Provision(options)
+	if err != nil {
+		return handleErr("%v", err)
+	}
+
 	if s3keys.AreEmpty() {
 		msg := "s3 access key or secret key is nil"
-		err = r.provisioner.Delete(obc)
+		err = r.provisioner.Delete(ob)
 		if err != nil {
 			msg = fmt.Sprintf("%s, error deleting bucket: %v", msg, err)
 		}
-		return reconcile.Result{}, fmt.Errorf("%v", err)
+		return handleErr("%v", err)
 	}
 
-	// TODO wrap in retry logic
-	err = wait.PollImmediate(r.retryInterval, r.retryTimeout, func() (done bool, err error) {
-		if err = r.client.Create(context.TODO(), ob); err != nil {
-			if apierrs.IsAlreadyExists(err) {
-				return true, fmt.Errorf("object bucket %s already exists: %v", ob.Name, err)
-			} else {
-				return true, fmt.Errorf("object bucket %s creation failed: %v", ob.Name, err)
-			}
-		}
-		return true, nil
-	})
+	if err = createUntilDefaultTimeout(ob, r.client); err != nil {
+		return handleErr("unable to create ObjectBucket %q: %v", ob.Name, err)
+	}
 
-	credSecret := newCredentailsSecret(obc, s3keys)
-	err = wait.PollImmediate(r.retryInterval, r.retryTimeout, func() (done bool, err error) {
-		if err = r.client.Create(context.TODO(), credSecret); err != nil {
-			if apierrs.IsAlreadyExists(err) {
-				return true, fmt.Errorf("secret %s/%s already exists: %v", credSecret.Namespace, credSecret.Name, err)
-			} else {
-				return true, fmt.Errorf("secret %s/%s creation failed: %v", err)
-			}
-		}
-		return true, nil
-	})
+	secret := newCredentailsSecret(obc, s3keys)
+	if err = createUntilDefaultTimeout(secret, r.client); err != nil {
+		return handleErr("unable to create Secret %q: %v", secret.Name, err)
+	}
 
 	bucketConfigMap := newBucketConfigMap(ob, obc)
-	err = wait.PollImmediate(r.retryInterval, r.retryTimeout, func() (done bool, err error) {
-		if err = r.client.Create(context.TODO(), bucketConfigMap); err != nil {
-			if apierrs.IsAlreadyExists(err) {
-				return true, fmt.Errorf("configMap %s/%s already exists: %v", bucketConfigMap.Namespace, bucketConfigMap.Name, err)
-			} else {
-				return true, fmt.Errorf("configMap %s/%s creation failed: %v", err)
-			}
-		}
-		return true, nil
-	})
+	if err = createUntilDefaultTimeout(bucketConfigMap, r.client); err != nil {
+		return handleErr("unable to create ConfigMap %q, ")
+	}
 
 	return reconcile.Result{}, nil
 }
@@ -158,20 +160,16 @@ func (r *objectBucketClaimReconciler) shouldProvision(class *storagev1.StorageCl
 	return class.Provisioner == r.provisionerName
 }
 
-func (r *objectBucketClaimReconciler) classFromClaim(obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
-	className := obc.Spec.StorageClassName
-	if className == "" {
-		return nil, fmt.Errorf("got empty string storage class name")
-	}
+func getStorageClassByName(name string, c client.Client) (*storagev1.StorageClass, error) {
 	sc := &storagev1.StorageClass{}
-	err := r.client.Get(context.TODO(), client.ObjectKey{Name: className}, sc)
+	err := c.Get(context.TODO(), client.ObjectKey{Name: name}, sc)
 	if err != nil {
 		return nil, fmt.Errorf("could not get storage class: %v", err)
 	}
 	return sc, nil
 }
 
-func newCredentailsSecret(obc *v1alpha1.ObjectBucketClaim, keys *auth.S3AccessKeys) *corev1.Secret {
+func newCredentailsSecret(obc *v1alpha1.ObjectBucketClaim, keys *provisioner.S3AccessKeys) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: v1.ObjectMeta{
 			GenerateName: obc.Name,
@@ -197,4 +195,31 @@ func newBucketConfigMap(ob *v1alpha1.ObjectBucket, obc *v1alpha1.ObjectBucketCla
 			bucketPort: strconv.Itoa(ob.Spec.BucketPort),
 		},
 	}
+}
+
+func createUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
+	return wait.PollImmediate(defaultRetryBaseInterval, defaultRetryTimeout, func() (done bool, err error) {
+		err = c.Create(context.Background(), obj)
+		if err != nil && !apierrs.IsAlreadyExists(err) {
+			return false, err
+		}
+		return true, nil
+	})
+}
+
+func extractClaimClass(obc *v1alpha1.ObjectBucketClaim) (string, error) {
+	if obc.Spec.StorageClassName == "" {
+		return "", fmt.Errorf("no class for claim %q", obc.Name)
+	}
+	return obc.Spec.StorageClassName, nil
+}
+
+func translateReclaimPolicy(rp corev1.PersistentVolumeReclaimPolicy) (v1alpha1.ReclaimPolicy, error) {
+	switch v1alpha1.ReclaimPolicy(rp) {
+	case v1alpha1.ReclaimPolicyDelete:
+		return v1alpha1.ReclaimPolicyDelete, nil
+	case v1alpha1.ReclaimPolicyRetain:
+		return v1alpha1.ReclaimPolicyRetain, nil
+	}
+	return "", fmt.Errorf("unrecognized reclaim policy %q", rp)
 }
