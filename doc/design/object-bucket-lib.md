@@ -17,6 +17,7 @@ This repo is a placeholder for an object store bucket provisioning library, very
 ### Assumptions
 1. The object store is represented by a Kubernetes service.
 1. _Brownfield_, meaning existing buckets, is not supported (yet). _New_, dynamic bucket provisioning is the focus of this proposal.
+1. There is no support for _best match_ binding like Kubernetes provides for PVs <-> PVCs. In other words, all provisioning is dynamic.
 
 ### Design
 The time has come where we can support a bucket provisioning API similar to that used for Persistent Volumes.
