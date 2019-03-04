@@ -1,6 +1,7 @@
 ## Generic Bucket Provisioning
 Kubernetes natively supports dynamic provisioning for many types of file and block storage, but lacks support for object bucket provisioning. 
 This repo is a placeholder for an object store bucket provisioning library, very similar to the Kubernetes [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go) library.
+The goal is to eventually move this library to a Kubernetes repo within sig-storage/.
 
 ### Table Of Contents
 1. [Assumptions](#assumptions)
@@ -16,8 +17,8 @@ This repo is a placeholder for an object store bucket provisioning library, very
 
 ### Assumptions
 1. The object store is represented by a Kubernetes service.
-1. _Brownfield_, meaning existing buckets, is not supported (yet). _New_, dynamic bucket provisioning is the focus of this proposal.
-1. There is no support for _best match_ binding like Kubernetes provides for PVs <-> PVCs. In other words, all provisioning is dynamic.
+1. _Brownfield_, meaning existing buckets, is not supported (yet). **New**, dynamic bucket provisioning is the focus of this proposal.
+1. There is no support for _best-match_ binding, as supported in Kubernetes for PVs <-> PVCs. In other words, all bucket provisioning is dynamic.
 
 ### Design
 The time has come where we can support a bucket provisioning API similar to that used for Persistent Volumes.
@@ -65,26 +66,35 @@ Bucket binding requires these steps before the bucket is accessible to an app po
 `Bound` is one of the supported phases of an OB and an OBC.
 `Bound` indicates that a bucket and all related artifacts have been created on behalf of the OBC. Once a bucket claim is bound the app pod can run, meaning the Secret (containing access credentials) and the ConfigMap (containing the bucket endpoint) are mounted and consumable by the pod.
 
-**Note:** bucket provisioners that wish to prevent the OBC author from creating buckets outside of the Kubernetes cluster should return credentials lacking bucket CREATE access.
-
 ### Bucket Deletion
-When an OBC is deleted the `Delete()` method is always called regardless of the OB's _reclaimPolicy_.
+When an OBC is deleted the provisioner's`Delete()` method is always called regardless of the OB's _reclaimPolicy_.
 This differs from the Kubernetes external lib implementation which only invokes `Delete()` when the _reclaimPolicy_ == "Delete".
-The reason to always call `Delete()`is so that provisioners can perform any needed bucket cleanup, even when the storage class dictates that the underlying bucket should be retained.
+The reason to always call `Delete()`is so that provisioners can perform any bucket cleanup, even when the storage class dictates that the underlying bucket should be retained.
 For example, ACLs and related user cleanup could be done if desired by the provisioner.
-But it also places an extra burden on provisioners to support the _reclaimPolicy_ (which resides in the OB).
+But it also places an extra burden on provisioners to support the _reclaimPolicy_ (resides in the OB).
 
-The bucket library always deletes all generated artifacts upon an OBC delete.
-It is possible that an OBC delete event is missed and therefore an OB remains but its associated OBC has been deleted.
-This scenario is handled by the OB watch which will delete orphaned OBs (and Secrets and ConfigMaps, if needed).
-However, since there are no watches for Secrets and ConfigMaps, it could be possible for an OBC and OB to be deleted but not the related Secret and/or ConfigMap.
-This scenario is not expected since the library will delete the Secret and ConfigMap before deleting the OB.
+The bucket library always attempts to delete all generated artifacts upon an OBC delete.
+The implementation of Kubernetes _informers_ recognizes that sometimes Delete events are missed.
+Controllers, therefore, need to be robust enough to infer deletes via other mechanisms, such as Status.
+For example, an OBC can be deleted from the cluster, but the delete event is missed and thus the controller doesn't know the delete occurred.
+In this scenario, the associated OB (and possibly the Secret and/or ConfigMap) remain, resulting in an _orphaned_ OB.
 
-To reduce the chances of an admin deleting a _bound_ OB, and/or Secret and/or ConfigMap, a finalizer is added to these resources. 
+#### Orphaned Object Buckets
+An orphaned OB is an OB with no matching OBC, and thus the state of the cluster is inconsistent.
+The solution is to delete orphaned OBs, but how are they detected since OBC watches are triggered by OBC events and there are no "events" associated with orphaned OBs.
+The solution is to run a centralized, provisioner-agnostic OB controller that watches all OBs, and detects and deletes orphans.
+
+There will be only one OB controller running per cluster, not the N controllers needed to support N bucket provisioners.
+There is still no event to trigger the detection of orphaned OBs, so a reasonably short sync period will cause the OB controller to re-fetch all OBs and look for orphans.
+When an orphaned OB is found the controller will check to see if the Secret and ConfigMap exist, and if so they will also be deleted.
+Even though there are no watches on Secrets and ConfigMaps, there is a lower (no?) probability for orphaned Secrets and/or ConfigMaps since they are deleted prior to the OB, and orphan OB cleanup also delete Secrets and ConfigMaps.
+
+Furthermore, to reduce the chances of an admin deleting a _bound_ OB, and/or Secret and/or ConfigMap, a finalizer is added to these resources. 
 The library's OBC controller will remove the finalizers when an OBC is deleted.
+Note: if an orphaned OB must be deleted manually, the finalizer must first be removed manually.
 
 **Note:** the bucket library has no mechanism to prevent an OBC from being deleted when one or more pods indirectly reference the OBC via the Secret and ConfigMap.
-This concept came late for PVCs, see [merged pr](https://github.com/kubernetes/community/pull/1174/files), and may be even more difficult to implement for OBCs.
+This feature came late for PVCs, see [merged pr](https://github.com/kubernetes/community/pull/1174/files), and may be even more difficult to implement for OBCs.
 
 ### Bucket Sharing
 A bucket can be shared, at least within the same namespace.
@@ -97,9 +107,11 @@ The number of buckets can be controlled by a resource quota once [this k8s pr](h
 Until then, Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the number of buckets.
 
 ### Watches
-The bucket provisioning library provides watches for OBCs across all namespaces, and for OBs.
-Each binary importing the lib is performing the same watches; however, the OBC watch quickly skips OBCs that do not target the specific provisioner.
-On the other hand, all provisioners watch all OBs. 
+
+#### OBC Watches
+All provisioners importing the bucket library watch OBCs across all namespaces.
+Each binary importing the lib performs the same OBC watch.
+OBCs that match the provisioner are further processed and OBCs not matching are quickly skipped.
 
 The OBC watch performs the following:
 + detects a new OBC:
@@ -110,6 +122,7 @@ The OBC watch performs the following:
     + create a global OB which references the OBC and storage class and contains store-specific bucket info
     + create a Secret, in the namespace as the OBC, containing the bucket credentials returned by the provisioner
     + create the ConfigMap, in the namespace as the OBC, containing the bucket's endpoint info
+    + in the above order!
   + if the provisioner returns an error:
     + retry:
       + call `Delete()` in case the bucket was created (want idempotency for next try)
@@ -125,14 +138,24 @@ The OBC watch performs the following:
   + invoke the `Delete()` method for the provisioner defined in the OBC's storage class
   + delete the related Secret, ConfigMap and the OB (in that order)
 
+#### OB Watches
+There is a single, central controller, separate from provisioners, that watches all OBs.
+The main (only?) purpose of an OB watch is to detect and handle orphaned OBs -- see above.
+The OB controller runs separately from provisioners and thus requires an extra setup step.
+
 The OB watch performs the following:
 + detects a new OB:
   + ensures a matching OBC exists
     + if yes, sets status to "pending"
-    + if no, sets status to "released" since this OB is orphaned
+    + if no, this OB is orphaned so delete it and associated Secet and ConfigMap
 + detects OB update events:
   + if status == "released" then delete OB (and ConfigMap and/or Secret if needed)
-+ ignores OB delete events (deletes events can be lost)
++ detects OB delete events (but deletes events can be lost)
+  + if the associated OBC is present the OB's Status is set to "released" (the OBC is orphaned but **not** deleted)
+  + if the associated Secret and/or ConfigMap are present they are deleted
++ periodically syncs all OBs:
+  + fetch all OBs
+  + add OBs to the work queue so that an Add event is triggered
 
 ### Limitations
 This proposal differs from the Kubernetes external provisioner lib in that there is no centralized, _core_ bucket/claim controller to handle missed events by performing periodic syncs.
