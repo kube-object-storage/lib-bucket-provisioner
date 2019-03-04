@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner"
-	corev1 "k8s.io/api/core/v1"
+	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/reconciler/util"
 	storagev1 "k8s.io/api/storage/v1"
-	apierrs "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -30,19 +25,9 @@ type objectBucketClaimReconciler struct {
 var _ reconcile.Reconciler = &objectBucketClaimReconciler{}
 
 const (
-	defaultRetryBaseInterval = time.Second * 10
-	defaultRetryTimeout      = time.Second * 360
-	defaultRetryBackOff      = 1
-
-	finalizer = "objectbucket.io/finalizer"
-
 	// Fields Names
-	bucketName      = "S3_BUCKET_NAME"
-	bucketHost      = "S3_BUCKET_HOST"
-	bucketPort      = "S3_BUCKET_PORT"
-	bucketAccessKey = "S3_BUCKET_ACCESS_KEY_ID"
-	bucketSecretKey = "S3_BUCKET_SECRET_KEY"
-	bucketURL       = "S3_BUCKET_URL"
+
+	bucketURL = "S3_BUCKET_URL"
 )
 
 type Options struct {
@@ -52,14 +37,14 @@ type Options struct {
 }
 
 func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner, options Options) *objectBucketClaimReconciler {
-	if options.RetryInterval < defaultRetryBaseInterval {
-		options.RetryInterval = defaultRetryBaseInterval
+	if options.RetryInterval < util.DefaultRetryBaseInterval {
+		options.RetryInterval = util.DefaultRetryBaseInterval
 	}
-	if options.RetryTimeout < defaultRetryTimeout {
-		options.RetryTimeout = defaultRetryTimeout
+	if options.RetryTimeout < util.DefaultRetryTimeout {
+		options.RetryTimeout = util.DefaultRetryTimeout
 	}
-	if options.RetryBackoff < defaultRetryBackOff {
-		options.RetryBackoff = defaultRetryBackOff
+	if options.RetryBackoff < util.DefaultRetryBackOff {
+		options.RetryBackoff = util.DefaultRetryBackOff
 	}
 	return &objectBucketClaimReconciler{
 		client:          c,
@@ -95,12 +80,12 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return handleErr("error getting claim %q: %v", obc.Name, err)
 	}
 
-	className, err := extractClaimClass(obc)
+	className, err := util.ExtractClaimClass(obc)
 	if err != nil {
 		return handleErr("%v", err)
 	}
 
-	storageClass, err := getStorageClassByName(className, r.client)
+	storageClass, err := util.GetStorageClassByName(className, r.client)
 	if err != nil && storageClass == nil {
 		return handleErr("unable to get storageClass %q of claim %q: %v", className, obc.Name, err)
 	}
@@ -109,7 +94,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return handleErr("claim failed shouldProvision check")
 	}
 
-	reclaimPolicy, err := translateReclaimPolicy(*storageClass.ReclaimPolicy)
+	reclaimPolicy, err := util.TranslateReclaimPolicy(*storageClass.ReclaimPolicy)
 	if err != nil {
 		return handleErr("error translating core.PersistentVolumeReclaimPolicy %q to v1alpha1.ReclaimPolicy: %v", storageClass.ReclaimPolicy, err)
 	}
@@ -137,17 +122,17 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return handleErr("%v", err)
 	}
 
-	if err = createUntilDefaultTimeout(ob, r.client); err != nil {
+	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
 		return handleErr("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 
-	secret := newCredentailsSecret(obc, s3keys)
-	if err = createUntilDefaultTimeout(secret, r.client); err != nil {
+	secret := util.NewCredentailsSecret(obc, s3keys)
+	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
 		return handleErr("unable to create Secret %q: %v", secret.Name, err)
 	}
 
-	bucketConfigMap := newBucketConfigMap(ob, obc)
-	if err = createUntilDefaultTimeout(bucketConfigMap, r.client); err != nil {
+	bucketConfigMap := util.NewBucketConfigMap(ob, obc)
+	if err = util.CreateUntilDefaultTimeout(bucketConfigMap, r.client); err != nil {
 		return handleErr("unable to create ConfigMap %q, ")
 	}
 
@@ -158,68 +143,4 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 // set of checks.
 func (r *objectBucketClaimReconciler) shouldProvision(class *storagev1.StorageClass) bool {
 	return class.Provisioner == r.provisionerName
-}
-
-func getStorageClassByName(name string, c client.Client) (*storagev1.StorageClass, error) {
-	sc := &storagev1.StorageClass{}
-	err := c.Get(context.TODO(), client.ObjectKey{Name: name}, sc)
-	if err != nil {
-		return nil, fmt.Errorf("could not get storage class: %v", err)
-	}
-	return sc, nil
-}
-
-func newCredentailsSecret(obc *v1alpha1.ObjectBucketClaim, keys *provisioner.S3AccessKeys) *corev1.Secret {
-	return &corev1.Secret{
-		ObjectMeta: v1.ObjectMeta{
-			GenerateName: obc.Name,
-			Namespace:    obc.Namespace,
-			Finalizers:   []string{finalizer},
-		},
-		StringData: map[string]string{
-			bucketAccessKey: keys.AccessKey,
-			bucketSecretKey: keys.SecretKey,
-		},
-	}
-}
-
-func newBucketConfigMap(ob *v1alpha1.ObjectBucket, obc *v1alpha1.ObjectBucketClaim) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
-		ObjectMeta: v1.ObjectMeta{
-			Name:      obc.Name,
-			Namespace: obc.Namespace,
-		},
-		Data: map[string]string{
-			bucketName: obc.Spec.BucketName,
-			bucketHost: ob.Spec.BucketHost,
-			bucketPort: strconv.Itoa(ob.Spec.BucketPort),
-		},
-	}
-}
-
-func createUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
-	return wait.PollImmediate(defaultRetryBaseInterval, defaultRetryTimeout, func() (done bool, err error) {
-		err = c.Create(context.Background(), obj)
-		if err != nil && !apierrs.IsAlreadyExists(err) {
-			return false, err
-		}
-		return true, nil
-	})
-}
-
-func extractClaimClass(obc *v1alpha1.ObjectBucketClaim) (string, error) {
-	if obc.Spec.StorageClassName == "" {
-		return "", fmt.Errorf("no class for claim %q", obc.Name)
-	}
-	return obc.Spec.StorageClassName, nil
-}
-
-func translateReclaimPolicy(rp corev1.PersistentVolumeReclaimPolicy) (v1alpha1.ReclaimPolicy, error) {
-	switch v1alpha1.ReclaimPolicy(rp) {
-	case v1alpha1.ReclaimPolicyDelete:
-		return v1alpha1.ReclaimPolicyDelete, nil
-	case v1alpha1.ReclaimPolicyRetain:
-		return v1alpha1.ReclaimPolicyRetain, nil
-	}
-	return "", fmt.Errorf("unrecognized reclaim policy %q", rp)
 }
