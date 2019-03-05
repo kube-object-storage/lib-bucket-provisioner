@@ -61,11 +61,11 @@ This is true even if the pod is created prior to the OBC.
 A couple of alternative designs were considered before reaching the design described here.
 1. A Rook-Ceph only provisioner with built-in watches, reconcilation, etc, **but** no bucket library. The main problem here is that each provisioner would need to write all of the controller code themselves.
 This could easily result in different _contracts_ for different provisioners, meaning one provisioners might create the Secret of ConfigMap differently than another.
-This could result in the app pod beind coupled to the provisioner.
+This could result in the app pod being coupled to the provisioner.
 1. Rook-Ceph repo and a centralized controller.
 Initially we considered a somewhat generic bucket provisioner living in the Rook repo and embedded in their existing operator (which is used to provision a ceph object store, an object user, etc).
 Feedback from the Rook community was that it didn't make sense for a generic (non-rook focused) controller to live inside Rook.
-1. Bucket library (as described here) but with the object bucket controller being invoked by each provisione.
+1. Bucket library (as described here) but with the object bucket controller being invoked by each provisioner.
 This approach is fully decentralized with each provisioner running watches on its own OBCs and on all OBs.
 There was concern expressed about unnecessary overhead having N provisioner all running the same OB controller watching the same OBs, and behaving the same for all OBs.
 Another issue was that a decentralized design didn't support a reasonable separation of concerns: namely, _Provisioner-1_, when reconciling orphaned OBs, could end up deleting an OB for a different provisioner.
