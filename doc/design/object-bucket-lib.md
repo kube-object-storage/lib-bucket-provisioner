@@ -12,7 +12,6 @@ The goal is to eventually move this library to a Kubernetes repo within sig-stor
 1. [Bucket Sharing](#bucket-sharing)
 1. [Quota](#quota)
 1. [Watches](#watches)
-1. [Limitations](#limitations)
 1. [API Specifications](#api-specifications)
 1. [Interfaces](#interfaces)
 
@@ -170,24 +169,6 @@ The OB watch performs the following:
 + periodically syncs all OBs:
   + fetch all OBs
   + add OBs to the work queue so that an Add event is triggered
-
-### Limitations
-This proposal differs from the Kubernetes external provisioner lib in that there is no centralized, _core_ bucket/claim controller to handle missed events by performing periodic syncs.
-For example, in the bucket lib, each provisioner watches OBs and updates orphaned OBs when its OBC is not found.
-With an understanding of the Kubernetes approach, it is reasonable to suggest that we also need a centralized
-bucket controller in addition to/or in lieu of the library.
-However, the cost to the cluster of each provisioner performing OB watches is mitigated by:
-+  OBs, OBCs and associated Storage Classes being cached for fast access, bypassing the API,
-+  the number of bucket provisioners per cluster is anticipated as being relatively small.
-
-There is an edge case where if only a single provisioner is running, an OBC is deleted, the provisioner dies before deleting the OB, and **no** provisioner is run again, then that OB remains orphaned with no change to its status.
-If something similar happened in Kubernetes the central controller would sync and detect the orphaned OB.
-A simple solution is to run each provisioner in a Deployment so that a provisioner is always running.
-When a provisioner restarts it will fetch all OBs and thus detect this orphan case.
-
-Lastly, if OB watches (which don't skip out early like OBC watches) are too resource hungry then a possible
-solution could be to use [_leader election_](https://github.com/kubernetes/client-go/blob/master/tools/leaderelection/example/main.go) when more than one provisioner is running.
-The "leader" provisioner will watch OBs (in addition to OBCs) while the non-leaders only watch OBCs.
 
 ## API Specifications
 
