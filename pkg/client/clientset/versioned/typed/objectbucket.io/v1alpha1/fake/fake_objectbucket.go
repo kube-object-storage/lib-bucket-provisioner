@@ -123,7 +123,7 @@ func (c *FakeObjectBuckets) DeleteCollection(options *v1.DeleteOptions, listOpti
 // Patch applies the patch and returns the patched objectBucket.
 func (c *FakeObjectBuckets) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.ObjectBucket, err error) {
 	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(objectbucketsResource, name, data, subresources...), &v1alpha1.ObjectBucket{})
+		Invokes(testing.NewRootPatchSubresourceAction(objectbucketsResource, name, pt, data, subresources...), &v1alpha1.ObjectBucket{})
 	if obj == nil {
 		return nil, err
 	}
