@@ -139,7 +139,7 @@ func (r *objectBucketClaimReconciler) handelProvision(options *provisioner.Bucke
 
 	bucketConfigMap := util.NewBucketConfigMap(ob, options.ObjectBucketClaim)
 	if err = util.CreateUntilDefaultTimeout(bucketConfigMap, r.client); err != nil {
-		return fmt.Errorf("unable to create ConfigMap %q, ")
+		return fmt.Errorf("unable to create ConfigMap %q for claim %q: %v", bucketConfigMap.Name, options.ObjectBucketClaim.Name)
 	}
 
 	return nil
