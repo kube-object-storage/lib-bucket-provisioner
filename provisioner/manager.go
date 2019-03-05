@@ -110,7 +110,7 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner provis
 	//  not be what we ultimately want.
 	if err = builder.ControllerManagedBy(ctrl.manager).
 		For(&v1alpha1.ObjectBucket{}).
-		Complete(&bucketReconciler.ObjectBucketReconciler{rc}); err != nil {
+		Complete(&bucketReconciler.ObjectBucketReconciler{Client: rc}); err != nil {
 		return nil, err
 	}
 

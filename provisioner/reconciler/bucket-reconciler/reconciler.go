@@ -8,7 +8,7 @@ import (
 )
 
 type ObjectBucketReconciler struct {
-	client client.Client
+	Client client.Client
 }
 
 // TODO if we decide that OBs should have their own Reconiler, then we can work out
@@ -17,7 +17,7 @@ func (r ObjectBucketReconciler) Reconcile(request reconcile.Request) (reconcile.
 
 	ob := &v1alpha1.ObjectBucket{}
 
-	if err := r.client.Get(context.TODO(), request.NamespacedName, ob); err != nil {
+	if err := r.Client.Get(context.TODO(), request.NamespacedName, ob); err != nil {
 		return reconcile.Result{}, nil
 	}
 
