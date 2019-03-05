@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -26,6 +26,7 @@ const (
 	BucketPort               = "S3_BUCKET_PORT"
 	BucketAccessKey          = "S3_BUCKET_ACCESS_KEY_ID"
 	BucketSecretKey          = "S3_BUCKET_SECRET_KEY"
+	BucketURL                = "S3_BUCKET_URL"
 )
 
 func GetStorageClassByName(name string, c client.Client) (*storagev1.StorageClass, error) {
@@ -90,4 +91,9 @@ func TranslateReclaimPolicy(rp v1.PersistentVolumeReclaimPolicy) (v1alpha1.Recla
 		return v1alpha1.ReclaimPolicyRetain, nil
 	}
 	return "", fmt.Errorf("unrecognized reclaim policy %q", rp)
+}
+
+// TODO stub
+func GenerateBucketName(prefix string) string {
+	return prefix + "stub"
 }

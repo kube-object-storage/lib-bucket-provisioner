@@ -1,12 +1,12 @@
-package provisioner
+package api
 
 import (
 	"fmt"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/bucket-reconciler"
+	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/claim-reconciler"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner"
-	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/reconciler/bucket-reconciler"
-	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/provisioner/reconciler/claim-reconciler"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"

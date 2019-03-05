@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/provisioner"
-	"github.com/yard-turkey/lib-bucket-provisioner/provisioner/reconciler/util"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
 	storagev1 "k8s.io/api/storage/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -23,12 +23,6 @@ type objectBucketClaimReconciler struct {
 }
 
 var _ reconcile.Reconciler = &objectBucketClaimReconciler{}
-
-const (
-	// Fields Names
-
-	bucketURL = "S3_BUCKET_URL"
-)
 
 type Options struct {
 	RetryInterval time.Duration
@@ -102,7 +96,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	options := &provisioner.BucketOptions{
 		ReclaimPolicy:     reclaimPolicy,
 		ObjectBucketName:  obc.Namespace + "-" + obc.Name,
-		BucketName:        "", // TODO name generator function
+		BucketName:        util.GenerateBucketName(obc.Spec.BucketName),
 		ObjectBucketClaim: obc,
 		Parameters:        storageClass.Parameters,
 	}
