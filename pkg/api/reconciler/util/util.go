@@ -3,8 +3,9 @@ package util
 import (
 	"context"
 	"fmt"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"strconv"
+	"time"
+
 	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -13,8 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
-	"time"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 const (

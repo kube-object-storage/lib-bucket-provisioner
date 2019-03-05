@@ -3,14 +3,16 @@ package reconciler
 import (
 	"context"
 	"fmt"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"strings"
+	"time"
+
 	storagev1 "k8s.io/api/storage/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strings"
-	"time"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 type objectBucketClaimReconciler struct {
