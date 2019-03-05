@@ -1,4 +1,4 @@
-package object_bucket_reconciler
+package reconciler
 
 import (
 	"context"
@@ -8,16 +8,16 @@ import (
 )
 
 type ObjectBucketReconciler struct {
-	client client.Client
+	Client client.Client
 }
 
 // TODO if we decide that OBs should have their own Reconiler, then we can work out
 //  the logic for that here.  If not, this package can be deleted.
-func (r *ObjectBucketReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r ObjectBucketReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 
 	ob := &v1alpha1.ObjectBucket{}
 
-	if err := r.client.Get(context.TODO(), request.NamespacedName, ob); err != nil {
+	if err := r.Client.Get(context.TODO(), request.NamespacedName, ob); err != nil {
 		return reconcile.Result{}, nil
 	}
 
