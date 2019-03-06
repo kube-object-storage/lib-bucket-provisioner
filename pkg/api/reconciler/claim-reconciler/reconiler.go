@@ -3,6 +3,7 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"k8s.io/api/core/v1"
 	"strings"
 	"time"
 
@@ -52,8 +53,9 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner pr
 	}
 }
 
-// TODO this is the guts of our controller.
-//   `request` is a 'namespace/name' object key.
+// Reconcile implementes the Reconciler interface.  This function contains the business logic of the
+// OBC controller.  Currently, the process strictly serves as a POC for an OBC controller and is
+// extremely fragile.
 func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 
 	handleErr := func(format string, a ...interface{}) (reconcile.Result, error) {
@@ -104,20 +106,32 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	return reconcile.Result{}, nil
 }
 
-// A simplistic check on whether this obc is a concern for this provisioner.  Down the road, this will perform a broader
+// shouldProvision is a simplistic check on whether this obc is a concern for this provisioner.  Down the road, this will perform a broader
 // set of checks.
 func (r *objectBucketClaimReconciler) shouldProvision(class *storagev1.StorageClass) bool {
 	return class.Provisioner == r.provisionerName
 }
 
+// handleProvision is an extraction of the core provisioning process in order to defer clean up
+// on a provisioning failure
 func (r *objectBucketClaimReconciler) handelProvision(options *provisioner.BucketOptions) error {
+
+	// ///   ///   ///   ///   ///   ///   ///
+	// TODO    CAUTION! UNDER CONSTRUCTION!
+	// ///   ///   ///   ///   ///   ///   ///
+
 	var (
-		ob  *v1alpha1.ObjectBucket
-		err error
+		ob        *v1alpha1.ObjectBucket
+		secret    *v1.Secret
+		configMap *v1.ConfigMap
+		err       error
 	)
 	defer func() {
 		if err != nil {
 			_ = r.provisioner.Delete(ob)
+			_ = r.client.Delete(context.Background(), ob)
+			_ = r.client.Delete(context.Background(), secret)
+			_ = r.client.Delete(context.Background(), configMap)
 		}
 	}()
 
@@ -134,14 +148,14 @@ func (r *objectBucketClaimReconciler) handelProvision(options *provisioner.Bucke
 		return fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 
-	secret := util.NewCredentailsSecret(options.ObjectBucketClaim, s3keys)
+	secret = util.NewCredentailsSecret(options.ObjectBucketClaim, s3keys)
 	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
 		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 
-	bucketConfigMap := util.NewBucketConfigMap(ob, options.ObjectBucketClaim)
-	if err = util.CreateUntilDefaultTimeout(bucketConfigMap, r.client); err != nil {
-		return fmt.Errorf("unable to create ConfigMap %q for claim %q: %v", bucketConfigMap.Name, options.ObjectBucketClaim.Name)
+	configMap = util.NewBucketConfigMap(ob, options.ObjectBucketClaim)
+	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
+		return fmt.Errorf("unable to create ConfigMap %q for claim %q: %v", configMap.Name, options.ObjectBucketClaim.Name)
 	}
 
 	return nil
