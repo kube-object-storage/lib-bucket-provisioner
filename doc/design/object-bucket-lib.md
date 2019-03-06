@@ -14,6 +14,7 @@ The goal is to eventually move this library to a Kubernetes repo within sig-stor
 1. [Watches](#watches)
 1. [API Specifications](#api-specifications)
 1. [Interfaces](#interfaces)
+1. [Future Considerations](future-considerations)
 
 ### Assumptions
 1. The object store is represented by a Kubernetes service.
@@ -57,7 +58,10 @@ This is true even if the pod is created prior to the OBC.
 **Note:** even though the PV-PVC design supports static provisioning, only dynamic provisioning is supported by the bucket lib at this time.
 
 ### Alternatives
-A couple of alternative designs were considered before reaching the design described here.
+A couple of alternative designs were considered before reaching the design described here:
+1. Using a service broker to provision buckets.
+This doesn't alleviate the pod from consuming env variables which define the endpoint and secret keys.
+It also feels too far removed from basic Kubernetes storage -- there is no claim and no object to represent the bucket.
 1. A Rook-Ceph only provisioner with built-in watches, reconcilation, etc, **but** no bucket library. The main problem here is that each provisioner would need to write all of the controller code themselves.
 This could easily result in different _contracts_ for different provisioners, meaning one provisioners might create the Secret of ConfigMap differently than another.
 This could result in the app pod being coupled to the provisioner.
@@ -484,7 +488,7 @@ type S3AccessKeys struct {
 }
 ```
 
-### Notes/Future Considerations
+### Future Considerations
 
 + Brownfield - what if user creates a namespaced OB. The OB's storage class still defines the store name/ns and could
 be the same SC used in an OBC, but the provisioner is ignored. Namespaced OBs never have OBCs and thus are never
@@ -492,3 +496,4 @@ considered orphaned. Since no provisoner is needed we'd have to have some other 
 
 + Interfaces - we could define 2 additional, optional interface types. A `Credential()` method accepts an OB and returns a credential struct. A `Bind()` method accepts an OB and credentials and binds the bucket to the creds.
 
++ If the use case of many app pods consuming the same secret/configMaps becomes important, we could support field mapping in the OBC. In other words, the OBC could define the names of the keys in the secret and data field names in the configMap such that the pod specs wouldn't need to define each env variable separately.
