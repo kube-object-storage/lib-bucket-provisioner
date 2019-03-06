@@ -3,23 +3,27 @@ package util
 import (
 	"context"
 	"fmt"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	"strconv"
+	"time"
+
 	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
-	"time"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 const (
 	DefaultRetryBaseInterval = time.Second * 10
 	DefaultRetryTimeout      = time.Second * 360
 	DefaultRetryBackOff      = 1
+	DefaultMaxAttempts       = 5
 	Finalizer                = "objectbucket.io/finalizer"
 	BucketName               = "S3_BUCKET_NAME"
 	BucketHost               = "S3_BUCKET_HOST"
@@ -93,7 +97,12 @@ func TranslateReclaimPolicy(rp v1.PersistentVolumeReclaimPolicy) (v1alpha1.Recla
 	return "", fmt.Errorf("unrecognized reclaim policy %q", rp)
 }
 
-// TODO stub
+const suffixLen = 5
+
 func GenerateBucketName(prefix string) string {
-	return prefix + "stub"
+	suf := rand.String(suffixLen)
+	if prefix == "" {
+		return suf
+	}
+	return fmt.Sprintf("%s-%s", prefix, suf)
 }

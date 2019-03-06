@@ -2,11 +2,9 @@ package api
 
 import (
 	"fmt"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
-	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/bucket-reconciler"
-	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/claim-reconciler"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"strings"
+	"time"
+
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -15,8 +13,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
-	"strings"
-	"time"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
+	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/bucket-reconciler"
+	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/claim-reconciler"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 const (
