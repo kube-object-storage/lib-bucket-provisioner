@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/api/core/v1"
+	"k8s.io/klog"
 	"strings"
 	"time"
 
@@ -37,12 +38,15 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner pr
 	if options.RetryInterval < util.DefaultRetryBaseInterval {
 		options.RetryInterval = util.DefaultRetryBaseInterval
 	}
+	klog.V(util.DebugLogLvl).Infof("Retry base interval == %s", options.RetryInterval)
 	if options.RetryTimeout < util.DefaultRetryTimeout {
 		options.RetryTimeout = util.DefaultRetryTimeout
 	}
+	klog.V(util.DebugLogLvl).Infof("Retry timeout == %s", options.RetryTimeout)
 	if options.RetryBackoff < util.DefaultRetryBackOff {
 		options.RetryBackoff = util.DefaultRetryBackOff
 	}
+	klog.V(util.DebugLogLvl).Infof("Retry backoff == %d", options.RetryBackoff)
 	return &objectBucketClaimReconciler{
 		client:          c,
 		provisionerName: strings.ToLower(name),
@@ -66,15 +70,14 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	// TODO    CAUTION! UNDER CONSTRUCTION!
 	// ///   ///   ///   ///   ///   ///   ///
 
+	klog.V(util.DebugLogLvl).Infof("Reconciling object %q", request)
+
 	obc := &v1alpha1.ObjectBucketClaim{}
 	if err := r.client.Get(context.TODO(), request.NamespacedName, obc); err != nil {
 		return handleErr("error getting claim %q: %v", obc.Name, err)
 	}
 
-	className, err := util.ExtractClaimClass(obc)
-	if err != nil {
-		return handleErr("%v", err)
-	}
+	className := obc.Spec.StorageClassName
 
 	storageClass, err := util.GetStorageClassByName(className, r.client)
 	if err != nil && storageClass == nil {
