@@ -31,6 +31,9 @@ const (
 	BucketAccessKey          = "S3_BUCKET_ACCESS_KEY_ID"
 	BucketSecretKey          = "S3_BUCKET_SECRET_KEY"
 	BucketURL                = "S3_BUCKET_URL"
+
+	InfoLogLvl = iota // only here for completeness, it's no different than calling klog.Info()
+	DebugLogLvl
 )
 
 func GetStorageClassByName(name string, c client.Client) (*storagev1.StorageClass, error) {
@@ -80,12 +83,6 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
 	})
 }
 
-func ExtractClaimClass(obc *v1alpha1.ObjectBucketClaim) (string, error) {
-	if obc.Spec.StorageClassName == "" {
-		return "", fmt.Errorf("no class for claim %q", obc.Name)
-	}
-	return obc.Spec.StorageClassName, nil
-}
 
 func TranslateReclaimPolicy(rp v1.PersistentVolumeReclaimPolicy) (v1alpha1.ReclaimPolicy, error) {
 	switch v1alpha1.ReclaimPolicy(rp) {

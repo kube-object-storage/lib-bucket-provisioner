@@ -1,14 +1,13 @@
 package api
 
 import (
-	"fmt"
-	"strings"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"time"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -22,8 +21,7 @@ import (
 )
 
 const (
-	ProvisionerNamePrefix = "objectbucket.io/"
-	DefaultThreadiness    = 1
+	DefaultThreadiness = 1
 )
 
 // provisionerController is the first iteration of our internal provisioning
@@ -31,14 +29,12 @@ const (
 // library, is stored for later Provision and Delete calls.
 type provisionerController struct {
 	manager     manager.Manager
+	name        string
 	provisioner provisioner.Provisioner
 	threads     int
 }
 
 type ProvisionerOptions struct {
-	// Threadiness is the amount of Reconciler routines per Controller
-	Threadiness int
-
 	// ProvisionBaseInterval the initial time interval before retrying
 	ProvisionBaseInterval time.Duration
 
@@ -53,21 +49,21 @@ type ProvisionerOptions struct {
 // instantiate a new provisioning controller. This controller will
 // respond to Add / Update / Delete events by calling the passed-in
 // provisioner's Provisioner and Delete methods.
-func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner provisioner.Provisioner, kubeVersion string, options *ProvisionerOptions) (*provisionerController, error) {
+func NewProvisioner(
+	cfg *rest.Config,
+	provisionerName string,
+	provisioner provisioner.Provisioner,
+	kubeVersion string,
+	options *ProvisionerOptions,
+) *provisionerController {
+
+	klog.Info("Constructing new provisioner: %s", provisionerName)
 
 	var err error
 
-	if nameErrors := isValidProvisionerName(provisionerName, field.NewPath("provisioner")); len(nameErrors) > 0 {
-		return nil, fmt.Errorf("invalid provisioner name %q: %v", provisionerName, nameErrors)
-	}
-
-	if options.Threadiness < DefaultThreadiness {
-		options.Threadiness = DefaultThreadiness
-	}
-
 	ctrl := &provisionerController{
 		provisioner: provisioner,
-		threads:     options.Threadiness,
+		name:        provisionerName,
 	}
 
 	// TODO manage.Options.SyncPeriod may be worth looking at
@@ -75,20 +71,19 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner provis
 	//  This is especially interesting for ObjectBuckets should we decide they should sync with the underlying bucket.
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
+	klog.V(util.DebugLogLvl).Infof("generating controller manager")
 	ctrl.manager, err = manager.New(cfg, manager.Options{})
 	if err != nil {
-		return nil, err
+		klog.Fatalf("Error creating controller manager: %v", err)
 	}
 
-	// TODO (jon) I'm PRETTY sure this is necessary to enable
-	//  watches of CRDs.  Needs to be verified.
 	if err = apis.AddToScheme(ctrl.manager.GetScheme()); err != nil {
-		return nil, err
+		klog.Fatalf("Error adding api resources to scheme")
 	}
 
 	rc, err := client.New(cfg, client.Options{})
 	if err != nil {
-		return nil, err
+		klog.Fatalf("Error generating new client: %v", err)
 	}
 
 	// Init ObjectBucketClaim controller.
@@ -103,7 +98,7 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner provis
 			RetryTimeout:  options.ProvisionRetryTimeout,
 		}))
 	if err != nil {
-		return nil, err
+		klog.Fatalf("Error creating ObjectBucketClaim controller: %v", err)
 	}
 
 	// Init ObjectBucket controller
@@ -113,29 +108,14 @@ func NewProvisioner(cfg *rest.Config, provisionerName string, provisioner provis
 	if err = builder.ControllerManagedBy(ctrl.manager).
 		For(&v1alpha1.ObjectBucket{}).
 		Complete(&bucketReconciler.ObjectBucketReconciler{Client: rc}); err != nil {
-		return nil, err
+		klog.Fatalf("Error creating ObjectBucket controller: %v", err)
 	}
 
-	return ctrl, nil
+	return ctrl
 
 }
 
 // Run starts the claim and bucket controllers.
 func (p *provisionerController) Run() {
-	// TODO this seems like it's too high level to start the go thread but I don't see
-	//  how to do it within the manager or controller.
-	for i := 0; i < p.threads; i++ {
-		go p.manager.Start(signals.SetupSignalHandler())
-	}
-}
-
-func isValidProvisionerName(n string, path *field.Path) field.ErrorList {
-	errList := field.ErrorList{}
-	if n == "" {
-		errList = append(errList, field.Required(path, "Name"))
-	}
-	for _, err := range validation.IsQualifiedName(strings.ToLower(n)) {
-		errList = append(errList, field.Invalid(path, n, err))
-	}
-	return errList
+	go p.manager.Start(signals.SetupSignalHandler())
 }
