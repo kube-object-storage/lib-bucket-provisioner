@@ -4,6 +4,7 @@ This repo is a placeholder for an object store bucket provisioning library, very
 The goal is to eventually move this library to a Kubernetes repo within sig-storage/.
 
 ### Table Of Contents
+1. [Goals](#goals)
 1. [Assumptions](#assumptions)
 1. [Design](#design)
 1. [Alternatives](#alternatives)
@@ -14,17 +15,27 @@ The goal is to eventually move this library to a Kubernetes repo within sig-stor
 1. [Watches](#watches)
 1. [API Specifications](#api-specifications)
 1. [Interfaces](#interfaces)
-1. [Future Considerations](future-considerations)
+1. [Future Considerations](#future-considerations)
+
+### Goals
++ Provide a generic, dynamic bucket provision API _similar_ to Persistent Volumes and Claims so that users familiar with the PV-PVC
+model will see bucket provisioning as intuitive.
+As a result, `kubectl` will be easy to use to see and manage buckets and claims.
++ Use an external library, as supported in Kubernetes, to ensure the contract between the app pod and bucket store is guaranteed.
++ Rely on native Storage Classes to define the object-store and provisioner.
++ Make no assumptions about the underlying object-store or the provisioner, including _not_ requiring the object-store be S3 compatible.
++ Cause the app pod to wait until the target bucket has been created and is accessible.
++ Require no changes to Kubernetes.
 
 ### Assumptions
 1. The object store is represented by a Kubernetes service.
-1. _Brownfield_, meaning existing buckets, is not supported (yet). **New**, dynamic bucket provisioning is the focus of this proposal.
+1. _Brownfield_, meaning existing buckets, is not supported. **New** dynamic bucket provisioning is the focus of this proposal.
 1. There is no support for _best-match_ binding, as supported in Kubernetes for PVs <-> PVCs. In other words, all bucket provisioning is dynamic.
 
 ### Design
 The time has come where we can support a bucket provisioning API similar to that used for Persistent Volumes.
 We propose two new Custom Resources to abstract an object store bucket and a claim/request for such a bucket.
-It's important to keep in mind that this proposal  only defines bucket and bucket claim APIs and related library code.
+It's important to keep in mind that this proposal only defines bucket and bucket claim APIs and related library code.
 The lib ensures that  the _contract_ made to app developers regarding the artifacts of bucket creation is guaranteed.
 The actual creation of physical buckets belongs to each object store provisioner.
 The bucket library handles watches on bucket claims and the (generated) bucket objects, reconciles state-of-the-world, creates the artifacts (Secret, ConfigMap) consumed by app pods, and deletes resources generated on behalf of the claim.
@@ -96,7 +107,7 @@ Controllers, therefore, need to be robust enough to infer deletes via other mech
 For example, an OBC can be deleted from the cluster, but the delete event is missed and thus the controller doesn't know the delete occurred.
 In this scenario, the associated OB (and possibly the Secret and/or ConfigMap) remain, resulting in an _orphaned_ OB.
 
-#### Orphaned Object Buckets
+#### Orphaned Object Buckets (all post first phase)
 An orphaned OB is an OB with no matching OBC, and thus the state of the cluster is inconsistent.
 The solution is to delete orphaned OBs, but how are they detected since OBC watches are triggered by OBC events and there are no "events" associated with orphaned OBs.
 The solution is to run a centralized, provisioner-agnostic OB controller that watches all OBs, and detects and deletes orphans.
@@ -119,7 +130,7 @@ The reason for this is that the app pods never reference the OBC (or OB) directl
 Since more than one pod can ingest the same Secert and ConfigMap, a bucket can be shared. _TODO: verify._
 
 ### Quota
-S3 bucket size cannot be specified; however, bucket size can be monitored in S3.
+Bucket size generally cannot be specified; however, the current size of a bucke can usually be monitored.
 The number of buckets can be controlled by a resource quota once [this k8s pr](https://github.com/kubernetes/kubernetes/pull/72384) is merged.
 Until then, Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the number of buckets.
 
@@ -155,7 +166,7 @@ The OBC watch performs the following:
   + invoke the `Delete()` method for the provisioner defined in the OBC's storage class
   + delete the related Secret, ConfigMap and the OB (in that order)
 
-#### OB Watches
+#### OB Watches (post initial phase)
 There is a single, central controller, separate from provisioners, that watches all OBs.
 The main (only?) purpose of an OB watch is to detect and handle orphaned OBs -- see above.
 The OB controller runs separately from provisioners and thus requires an extra setup step.
@@ -178,7 +189,7 @@ The OB watch performs the following:
 
 ### OBC Custom Resource (User Defined)
 ```yaml
-apiVersion: objectbucket.s3.io/v1alpha1
+apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucketClaim
 metadata:
   name: MY-BUCKET-1 [1]
@@ -205,7 +216,7 @@ and `bucketName` will be set to this generated name.
 1. predefined bucket ACLs:
 {"BucketCannedACLPrivate", "BucketCannedACLPublicRead", "BucketCannedACLPublicReadWrite", "BucketCannedACLAuthenticatedRead".
 1. versioned determines if versioning is enabled.
-1. additionalConfig gives non-AWS S3 providers a location to set proprietary config values (tenant, namespace...).
+1. additionalConfig gives providers a location to set proprietary config values (tenant, namespace...).
 The value is a list of 1 or more key-value pairs.
 
 ### OBC Custom Resource (after updated by lib)
@@ -278,10 +289,10 @@ metadata:
   - name: MY-BUCKET-1
     ...
 data: 
-  S3_BUCKET_HOST: http://MY-STORE-URL [6]
-  S3_BUCKET_PORT: 80 [7]
-  S3_BUCKET_NAME: MY-BUCKET-1 [8]
-  S3_BUCKET_URL: http://MY-STORE-URL/MY_BUCKET_1:80 [9]
+  BUCKET_HOST: http://MY-STORE-URL [6]
+  BUCKET_PORT: 80 [7]
+  BUCKET_NAME: MY-BUCKET-1 [8]
+  BUCKET_URL: http://MY-STORE-URL/MY_BUCKET_1:80 [9]
 ```
 1. same name as the OBC. Unique since the configMap is in the same namespace as the OBC.
 1. determined by the namespace of the ObjectBucketClaim.
@@ -310,7 +321,7 @@ spec:
     - secretRef:
         name: MY-BUCKET-1 [2]
 ```
-1. makes available to the pod as env variables: S3_BUCKET_HOST, S3_BUCKET_PORT, S3_BUCKET_NAME, S3_BUCKET_URL
+1. makes available to the pod as env variables: BUCKET_HOST, BUCKET_PORT, BUCKET_NAME, BUCKET_URL
 1. makes available to the pod as env variables: ACCESS_KEY_ID, SECRET_ACCESS_KEY
 
  ### Generated OB Custom Resource
@@ -353,20 +364,20 @@ metadata:
   labels: 
     ceph.rook.io/object: [1]
 provisioner: rgw-ceph-rook.io [2]
-parameters:
-  objectStoreRef: [3]
+parameters: [3]
+  objectStoreRef: [4]
     serviceName: MY-STORE
     serviceNamespace: MY-STORE-NAMESPACE
-    region: LOCATION [4]
+    region: LOCATION
   secretRef: [5]
     name: OBJECT-STORE-ADMIN-SECRET-NAME
     namespace: OBJECT-STORE-ADMIN-SECRET-NAMESPACE
 ```
 1. (optional) the label here associates this StorageClass to a specific provisioner.  
 1. provisioner responsible to handling OBCs referencing this StorageClass.
-1. objectStore used by the operator to derive the object store Service name.
-1. region is optional and defines a region of the object store.
-1. an optional admin-level secret containing the provisioner's key-pairs to be used for bucket creation.
+1. all parameters keys and values are specific to a provisioner and are not validated by the Storage Class.
+1. objectStore is the suggested name to define the object store's service's name, namespace, region, etc.
+1. suggested name for a secret containing the provisioner's key-pairs to be used for bucket creation.
 
 ### OBC Custom Resource Definition
 ```yaml
@@ -415,7 +426,7 @@ The bucket provisioning library defines two interfaces which all provsioners mus
 type Provisioner interface {
 	// Provision should be implemented to handle bucket creation
 	// for the target object store
-	Provision(ObjectBucketOptions) (*v1alpha1.ObjectBucket, *auth.S3AccessKeys, error)
+	Provision(ObjectBucketOptions) (*v1alpha1.ObjectBucket, *auth.AccessKeys, error)
 	// Delete should be implemented to handle bucket deletion
 	// for the target object store
 	Delete(claim *v1alpha1.ObjectBucketClaim) error
@@ -481,9 +492,9 @@ type ObjectBucketSpec struct {
 }
 ```
 
-##### S3AccessKeys
+##### AccessKeys
 ```golang
-type S3AccessKeys struct {
+type AccessKeys struct {
 	AccessKey, SecretKey string
 }
 ```
