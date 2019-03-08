@@ -5,6 +5,7 @@ The (stretch) goal is to eventually move this library to a Kubernetes repo withi
 
 ### Table Of Contents
 1. [Goals](#goals)
+1. [Non-Goals](#non-goals)
 1. [Assumptions](#assumptions)
 1. [Design](#design)
 1. [Alternatives](#alternatives)
@@ -26,6 +27,11 @@ As a result, `kubectl` will be easy to use to see and manage buckets and claims.
 + Be unopinionated about the underlying object-store.
 + Give provisioners a simple interface with minimal constraints.
 + Cause the app pod to wait until the target bucket has been created and is accessible.
+
+### Non-Goals
++ Update Kubernetes PVC-PV API to support object buckets.
++ Handle the small percentage of apps that will not be portable due to use of non-compatible object-store features.
+For example, an app that uses a feature in object-store-1 that is not provided in object-store-2, and the app now is tied to an object-store-2 endpoint.
 
 ### Assumptions
 1. _Brownfield_, meaning existing buckets, is not supported.
