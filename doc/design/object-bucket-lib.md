@@ -1,7 +1,7 @@
 ## Generic Bucket Provisioning
 Kubernetes natively supports dynamic provisioning for many types of file and block storage, but lacks support for object bucket provisioning. 
 This repo is a placeholder for an object store bucket provisioning library, very similar to the Kubernetes [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go) library.
-The goal is to eventually move this library to a Kubernetes repo within sig-storage/.
+The (stretch) goal is to eventually move this library to a Kubernetes repo within sig-storage/.
 
 ### Table Of Contents
 1. [Goals](#goals)
@@ -21,19 +21,19 @@ The goal is to eventually move this library to a Kubernetes repo within sig-stor
 + Provide a generic, dynamic bucket provision API _similar_ to Persistent Volumes and Claims so that users familiar with the PV-PVC
 model will see bucket provisioning as intuitive.
 As a result, `kubectl` will be easy to use to see and manage buckets and claims.
-+ Use an external library, as supported in Kubernetes, to ensure the contract between the app pod and bucket store is guaranteed.
++ Create an external library, similar to what exists today in Kubernetes, to ensure the contract between the app pod and bucket store is guaranteed.
 + Rely on native Storage Classes to define the object-store and provisioner.
-+ Make no assumptions about the underlying object-store or the provisioner, including _not_ requiring the object-store be S3 compatible.
++ Be unopinionated about the underlying object-store.
++ Give provisioners a simple interface with minimal constraints.
 + Cause the app pod to wait until the target bucket has been created and is accessible.
-+ Require no changes to Kubernetes.
 
 ### Assumptions
-1. The object store is represented by a Kubernetes service.
-1. _Brownfield_, meaning existing buckets, is not supported. **New** dynamic bucket provisioning is the focus of this proposal.
-1. There is no support for _best-match_ binding, as supported in Kubernetes for PVs <-> PVCs. In other words, all bucket provisioning is dynamic.
+1. _Brownfield_, meaning existing buckets, is not supported.
+Only **new** dynamic bucket provisioning is addressed by this proposal, thus there is no support for _best-match_ binding, like Kubernetes has for PVs <-> PVCs.
+1. Apps need to be designed for object-store portability.
+Just like there can be portability issues when an app exploits specialized features of a file system, an app accessing buckets, where portability matters, must be designed for that purpose.
 
 ### Design
-The time has come where we can support a bucket provisioning API similar to that used for Persistent Volumes.
 We propose two new Custom Resources to abstract an object store bucket and a claim/request for such a bucket.
 It's important to keep in mind that this proposal only defines bucket and bucket claim APIs and related library code.
 The lib ensures that  the _contract_ made to app developers regarding the artifacts of bucket creation is guaranteed.
@@ -81,8 +81,9 @@ Initially we considered a somewhat generic bucket provisioner living in the Rook
 Feedback from the Rook community was that it didn't make sense for a generic (non-rook focused) controller to live inside Rook.
 1. Bucket library (as described here) but with the object bucket controller being invoked by each provisioner.
 This approach is fully decentralized with each provisioner running watches on its own OBCs and on all OBs.
-There was concern expressed about unnecessary overhead having N provisioner all running the same OB controller watching the same OBs, and behaving the same for all OBs.
+There has been concern expressed about overhead having N provisioners all running the same OB controller watching the same OBs, and behaving the same for all OBs.
 Another issue was that a decentralized design didn't support a reasonable separation of concerns: namely, _Provisioner-1_, when reconciling orphaned OBs, could end up deleting an OB for a different provisioner.
+**Note:** this alternative for Phase-0 of this proposal, since there will be no OB controller, is not relevant.
 
 ### Binding
 Bucket binding requires these steps before the bucket is accessible to an app pod:
@@ -107,7 +108,7 @@ Controllers, therefore, need to be robust enough to infer deletes via other mech
 For example, an OBC can be deleted from the cluster, but the delete event is missed and thus the controller doesn't know the delete occurred.
 In this scenario, the associated OB (and possibly the Secret and/or ConfigMap) remain, resulting in an _orphaned_ OB.
 
-#### Orphaned Object Buckets (all post first phase)
+#### Orphaned Object Buckets (post phase-0)
 An orphaned OB is an OB with no matching OBC, and thus the state of the cluster is inconsistent.
 The solution is to delete orphaned OBs, but how are they detected since OBC watches are triggered by OBC events and there are no "events" associated with orphaned OBs.
 The solution is to run a centralized, provisioner-agnostic OB controller that watches all OBs, and detects and deletes orphans.
@@ -166,7 +167,7 @@ The OBC watch performs the following:
   + invoke the `Delete()` method for the provisioner defined in the OBC's storage class
   + delete the related Secret, ConfigMap and the OB (in that order)
 
-#### OB Watches (post initial phase)
+#### OB Watches (post phase-0)
 There is a single, central controller, separate from provisioners, that watches all OBs.
 The main (only?) purpose of an OB watch is to detect and handle orphaned OBs -- see above.
 The OB controller runs separately from provisioners and thus requires an extra setup step.
@@ -315,12 +316,13 @@ spec:
   containers:
   - name: mycontainer
     image: redis
-    envFrom:
-    - configMapRef:
-        name: MY-BUCKET-1 [1]
-    - secretRef:
+    envFrom: [1]
+    - configMapRef: 
         name: MY-BUCKET-1 [2]
+    - secretRef:
+        name: MY-BUCKET-1 [3]
 ```
+1. use `env:` if mapping of the defined key names to the env var names used by the app is needed.
 1. makes available to the pod as env variables: BUCKET_HOST, BUCKET_PORT, BUCKET_NAME, BUCKET_URL
 1. makes available to the pod as env variables: ACCESS_KEY_ID, SECRET_ACCESS_KEY
 
@@ -365,19 +367,12 @@ metadata:
     ceph.rook.io/object: [1]
 provisioner: rgw-ceph-rook.io [2]
 parameters: [3]
-  objectStoreRef: [4]
-    serviceName: MY-STORE
-    serviceNamespace: MY-STORE-NAMESPACE
-    region: LOCATION
-  secretRef: [5]
-    name: OBJECT-STORE-ADMIN-SECRET-NAME
-    namespace: OBJECT-STORE-ADMIN-SECRET-NAMESPACE
+  ...
 ```
 1. (optional) the label here associates this StorageClass to a specific provisioner.  
 1. provisioner responsible to handling OBCs referencing this StorageClass.
-1. all parameters keys and values are specific to a provisioner and are not validated by the Storage Class.
-1. objectStore is the suggested name to define the object store's service's name, namespace, region, etc.
-1. suggested name for a secret containing the provisioner's key-pairs to be used for bucket creation.
+1. **all** parameter keys and values are specific to a provisioner, are optional, and are not validated by the StorageClass API.
+Fields to consider are object-store endpoint, version, possibly a secretRef containing info about credential for new bucket owners, etc.
 
 ### OBC Custom Resource Definition
 ```yaml
