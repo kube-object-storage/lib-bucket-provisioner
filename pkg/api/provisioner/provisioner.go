@@ -9,7 +9,7 @@ import (
 type Provisioner interface {
 	// Provision should be implemented to handle bucket creation
 	// for the target object store
-	Provision(options *BucketOptions) (*v1alpha1.ObjectBucket, *S3AccessKeys, error)
+	Provision(options *BucketOptions) (*v1alpha1.ObjectBucket, error)
 	// Delete should be implemented to handle bucket deletion
 	// for the target object store
 	Delete(ob *v1alpha1.ObjectBucket) error
@@ -26,12 +26,4 @@ type BucketOptions struct {
 	ObjectBucketClaim *v1alpha1.ObjectBucketClaim
 	// Parameters is a complete copy of the OBC's storage class Parameters field
 	Parameters map[string]string
-}
-
-type S3AccessKeys struct {
-	AccessKey, SecretKey string
-}
-
-func (k *S3AccessKeys) AreEmpty() bool {
-	return k.AccessKey == "" && k.SecretKey == ""
 }

@@ -1,9 +1,17 @@
 package v1alpha1
 
 import (
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+type BucketCannedACL string
+
+const (
+	BucketCannedACLPrivate           BucketCannedACL = "private"
+	BucketCannedACLPublicRead        BucketCannedACL = "public-read"
+	BucketCannedACLPublicReadWrite   BucketCannedACL = "public-read-write"
+	BucketCannedACLAuthenticatedRead BucketCannedACL = "authenticated-read"
 )
 
 // ObjectBucketClaimSpec defines the desired state of ObjectBucketClaim
@@ -20,16 +28,16 @@ type ObjectBucketClaimSpec struct {
 	GeneratBucketName string `json:"generateBucketName,omitempty"`
 	// SSL whether connection to the bucket requires SSL authentication or not
 	SSL bool `json:"ssl"`
-	// AWS S3 predefined bucket ACLs.
+	// Generic predefined bucket ACLs for use by provisioners
 	// Available BucketCannedACLs are:
 	//    BucketCannedACLPrivate
 	//    BucketCannedACLPublicRead
 	//    BucketCannedACLPublicReadWrite
 	//    BucketCannedACLAuthenticatedRead
-	CannedBucketACL s3.BucketCannedACL `json:"cannedBucketAcl"`
+	BucketCannedACL BucketCannedACL `json:"cannedBucketAcl"`
 	// Versioned determines if versioning is enabled
 	Versioned bool `json:"versioned"`
-	// AdditionalConfig gives non-AWS S3 providers a location to set
+	// AdditionalConfig gives providers a location to set
 	// proprietary config values (tenant, namespace, etc)
 	AdditionalConfig map[string]string `json:"additionalConfig"`
 }

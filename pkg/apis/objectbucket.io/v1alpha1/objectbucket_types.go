@@ -12,20 +12,29 @@ const (
 	ReclaimPolicyRetain ReclaimPolicy = "retain"
 )
 
+// AccessKeys is an Authentication type for passing AWS S3 style
+// key pairs from the provisioner to the reconciler.
+type AccessKeys struct {
+	AccessKeyId     string `json:"-"`
+	SecretAccessKey string `json:"-"`
+}
+
 // ObjectBucketSpec defines the desired state of ObjectBucket.
-// Fields defined here should be normal among all S3 providers.
+// Fields defined here should be normal among all providers.
+// Authentication must be of a type defined in this package to
+// pass type checks in reconciler
 type ObjectBucketSpec struct {
-	StorageClassName string
-	ClaimRef         *v1.ObjectReference
-	ReclaimPolicy    ReclaimPolicy
-	BucketHost       string
-	BucketPort       int
+	StorageClassName string              `json:"storageClassName"`
+	ClaimRef         *v1.ObjectReference `json:"claimRef"`
+	ReclaimPolicy    ReclaimPolicy       `json:"reclaimPolicy"`
+	BucketHost       string              `json:"bucketHost"`
+	BucketPort       int                 `json:"bucketPort"`
+	Authentication   interface{}         `json:"-"`
 }
 
 type ObjectBucketStatusPhase string
 
 const (
-	ObjectBucketStatusPhasePending  ObjectBucketStatusPhase      = "pending"
 	ObjectBucketStatusPhaseBound    ObjectBucketStatusPhase      = "bound"
 	ObjectBucketStatusPhaseReleased ObjectBucketStatusPhase      = "released"
 	ObjectBucketStatusPhaseFailed   ObjectBucketClaimStatusPhase = "failed"
@@ -33,8 +42,8 @@ const (
 
 // ObjectBucketStatus defines the observed state of ObjectBucket
 type ObjectBucketStatus struct {
-	Phase      ObjectBucketClaimStatusPhase
-	Conditions v1.ConditionStatus
+	Phase      ObjectBucketClaimStatusPhase `json:"phase"`
+	Conditions v1.ConditionStatus           `json:"conditions"`
 }
 
 // +genclient
