@@ -12,11 +12,41 @@ const (
 	ReclaimPolicyRetain ReclaimPolicy = "retain"
 )
 
+type mapper interface {
+	toMap() map[string]string
+}
+
+const (
+	AwsKeyField    = "AWS_ACCESS_KEY_ID"
+	AwsSecretField = "AWS_SECRET_ACCESS_KEY"
+)
+
 // AccessKeys is an Authentication type for passing AWS S3 style
 // key pairs from the provisioner to the reconciler.
 type AccessKeys struct {
 	AccessKeyId     string `json:"-"`
 	SecretAccessKey string `json:"-"`
+}
+
+func (ak *AccessKeys) toMap() map[string]string {
+	return map[string]string{
+		AwsKeyField:    ak.AccessKeyId,
+		AwsSecretField: ak.SecretAccessKey,
+	}
+}
+
+type AuthSource struct {
+	AccessKeys *AccessKeys
+}
+
+func (a *AuthSource) ToMap() map[string]string {
+	if a == nil {
+		return map[string]string{}
+	}
+	if a.AccessKeys != nil {
+		return a.AccessKeys.toMap()
+	}
+	return map[string]string{}
 }
 
 // ObjectBucketSpec defines the desired state of ObjectBucket.
@@ -29,7 +59,7 @@ type ObjectBucketSpec struct {
 	ReclaimPolicy    ReclaimPolicy       `json:"reclaimPolicy"`
 	BucketHost       string              `json:"bucketHost"`
 	BucketPort       int                 `json:"bucketPort"`
-	Authentication   interface{}         `json:"-"`
+	Authentication   *AuthSource         `json:"-"`
 }
 
 type ObjectBucketStatusPhase string

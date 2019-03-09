@@ -1,8 +1,11 @@
 package util
 
 import (
+	"fmt"
+
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
@@ -10,28 +13,32 @@ import (
 
 // NewCredentailsSecret returns a secret with data appropriate to the supported authenticaion method
 // Right now, this is just access keys
-func NewCredentailsSecret(options *provisioner.BucketOptions, bucket *v1alpha1.ObjectBucket) *v1.Secret {
+func NewCredentailsSecret(opts *provisioner.BucketOptions, ob *v1alpha1.ObjectBucket) (*v1.Secret, error) {
+
+	if opts == nil {
+		return nil, fmt.Errorf("BucketOptions required to secret generation")
+	}
+	if opts.ObjectBucketClaim == nil {
+		return nil, fmt.Errorf("ObjectBucketClaim required to generate secret")
+	}
+	if ob == nil {
+		return nil, fmt.Errorf("ObjectBucket required to generate secret")
+	}
+
+	klog.V(DebugLogLvl).Infof("generating new secret for ObjectBucketClaim \"%s/%s\"", opts.ObjectBucketClaim.Namespace, opts.ObjectBucketClaim.Name)
 
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: options.ObjectBucketClaim.Name,
-			Namespace:    options.ObjectBucketClaim.Namespace,
-			Finalizers:   []string{Finalizer},
+			Name:       opts.ObjectBucketClaim.Name,
+			Namespace:  opts.ObjectBucketClaim.Namespace,
+			Finalizers: []string{Finalizer},
 		},
 	}
 
-	// TODO as we add more authentication methods this switch as well as the functions for processing
-	//  the auth data into the secret will be expanded.
-	switch bucket.Spec.Authentication.(type) {
-	case v1alpha1.AccessKeys:
-		secret = secretFromAccessKeys(secret, bucket.Spec.Authentication.(v1alpha1.AccessKeys))
+	secret.StringData = ob.Spec.Authentication.ToMap()
+	if len(secret.StringData) == 0 {
+		// The provisioner may not have deliberately provided credentials, just log a warning
+		klog.Warningf("objectBucket %q has no authentication credentials defined", ob.Name)
 	}
-
-	return secret
-}
-
-func secretFromAccessKeys(base *v1.Secret, key v1alpha1.AccessKeys) *v1.Secret {
-	base.StringData[BucketAccessKey] = key.AccessKeyId
-	base.StringData[BucketSecretKey] = key.SecretAccessKey
-	return base
+	return secret, nil
 }
