@@ -89,7 +89,7 @@ Feedback from the Rook community was that it didn't make sense for a generic (no
 This approach is fully decentralized with each provisioner running watches on its own OBCs and on all OBs.
 There has been concern expressed about overhead having N provisioners all running the same OB controller watching the same OBs, and behaving the same for all OBs.
 Another issue was that a decentralized design didn't support a reasonable separation of concerns: namely, _Provisioner-1_, when reconciling orphaned OBs, could end up deleting an OB for a different provisioner.
-**Note:** this alternative for Phase-0 of this proposal, since there will be no OB controller, is not relevant.
+**Note:** this alternative in not relevant to Phase-0 of this proposal since there will be no OB controller until a later phase.
 
 ### Binding
 Bucket binding requires these steps before the bucket is accessible to an app pod:
