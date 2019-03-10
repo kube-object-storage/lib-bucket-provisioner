@@ -21,7 +21,7 @@ The (stretch) goal is to eventually move this library to a Kubernetes repo withi
 ### Goals
 + Provide a generic, dynamic bucket provision API _similar_ to Persistent Volumes and Claims so that users familiar with the PV-PVC
 model will see bucket provisioning as intuitive.
-As a result, `kubectl` will be easy to use to see and manage buckets and claims.
+As a result, `kubectl` will be easy to use to create, list, and manage buckets and claims.
 + Create an external library, similar to what exists today in Kubernetes, to ensure the contract between the app pod and bucket store is guaranteed.
 + Rely on native Storage Classes to define the object-store and provisioner.
 + Be unopinionated about the underlying object-store.
