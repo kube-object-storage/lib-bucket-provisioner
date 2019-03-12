@@ -1,9 +1,9 @@
 package api
 
 import (
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
-	"k8s.io/apimachinery/pkg/util/runtime"
 	"time"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
@@ -20,10 +20,6 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
-const (
-	DefaultThreadiness = 1
-)
-
 // provisionerController is the first iteration of our internal provisioning
 // controller.  The passed-in bucket provisioner, coded by the user of the
 // library, is stored for later Provision and Delete calls.
@@ -31,7 +27,6 @@ type provisionerController struct {
 	manager     manager.Manager
 	name        string
 	provisioner provisioner.Provisioner
-	threads     int
 }
 
 type ProvisionerOptions struct {
@@ -41,6 +36,7 @@ type ProvisionerOptions struct {
 	// ProvisionRetryTimeout the maximum amount of time to attempt bucket provisioning.
 	// Once reached, the claim key is dropped and re-queued
 	ProvisionRetryTimeout time.Duration
+
 	// ProvisionRetryBackoff the base interval multiplier, applied each iteration
 	ProvisionRetryBackoff int
 }
@@ -53,7 +49,6 @@ func NewProvisioner(
 	cfg *rest.Config,
 	provisionerName string,
 	provisioner provisioner.Provisioner,
-	kubeVersion string,
 	options *ProvisionerOptions,
 ) *provisionerController {
 
@@ -117,5 +112,6 @@ func NewProvisioner(
 
 // Run starts the claim and bucket controllers.
 func (p *provisionerController) Run() {
+	klog.Infof("Starting controller for %s provisioner", p.name)
 	go p.manager.Start(signals.SetupSignalHandler())
 }
