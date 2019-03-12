@@ -49,7 +49,6 @@ func NewProvisioner(
 	cfg *rest.Config,
 	provisionerName string,
 	provisioner provisioner.Provisioner,
-	kubeVersion string,
 	options *ProvisionerOptions,
 ) *provisionerController {
 

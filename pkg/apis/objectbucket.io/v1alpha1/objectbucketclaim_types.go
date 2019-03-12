@@ -26,7 +26,7 @@ type ObjectBucketClaimSpec struct {
 	// followed by a hyphen and 5 random characters. Protects against
 	// in-store name collisions.
 	GeneratBucketName string `json:"generateBucketName,omitempty"`
-	// SSL whether connection to the bucket requires SSL authentication or not
+	// SSL whether connection to the bucket requires SSL Authentication or not
 	SSL bool `json:"ssl"`
 	// Generic predefined bucket ACLs for use by provisioners
 	// Available BucketCannedACLs are:

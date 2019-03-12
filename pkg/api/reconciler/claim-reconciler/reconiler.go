@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog"
 
-	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -125,11 +124,15 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *provisioner.Bucke
 	// ///   ///   ///   ///   ///   ///   ///
 
 	var (
-		ob        *v1alpha1.ObjectBucket
-		secret    *v1.Secret
-		configMap *v1.ConfigMap
-		err       error
+		ob         *v1alpha1.ObjectBucket
+		connection *v1alpha1.Connection
+		secret     *v1.Secret
+		configMap  *v1.ConfigMap
+		err        error
 	)
+
+	// If any process of provisiong occures, clean up all artifacts of the provision process
+	// so we can start fresh in the next iteration
 	defer func() {
 		if err != nil {
 			_ = r.provisioner.Delete(ob)
@@ -139,23 +142,23 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *provisioner.Bucke
 		}
 	}()
 
-	ob, err = r.provisioner.Provision(options)
+	connection, err = r.provisioner.Provision(options)
 	if err != nil {
 		return fmt.Errorf("error provisioning bucket: %v", err)
-	} else if ob == nil {
-		return fmt.Errorf("error provision bucket.  got nil object bucket")
+	} else if connection == nil {
+		return fmt.Errorf("error provisioning bucket.  got nil connection")
 	}
 
 	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
 		return fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 
-	secret = util.NewCredentailsSecret(options, ob)
+	secret, err = util.NewCredentailsSecret(options.ObjectBucketClaim, connection.Authentication)
 	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
 		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 
-	configMap = util.NewBucketConfigMap(ob, options.ObjectBucketClaim)
+	configMap = util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
 	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
 		return fmt.Errorf("unable to create ConfigMap %q for claim %q: %v", configMap.Name, options.ObjectBucketClaim.Name)
 	}
