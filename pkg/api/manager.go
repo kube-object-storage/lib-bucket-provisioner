@@ -20,13 +20,13 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
-// provisionerController is the first iteration of our internal provisioning
+// ProvisionerController is the first iteration of our internal provisioning
 // controller.  The passed-in bucket provisioner, coded by the user of the
 // library, is stored for later Provision and Delete calls.
-type provisionerController struct {
-	manager     manager.Manager
-	name        string
-	provisioner provisioner.Provisioner
+type ProvisionerController struct {
+	Manager     manager.Manager
+	Name        string
+	Provisioner provisioner.Provisioner
 }
 
 type ProvisionerOptions struct {
@@ -50,15 +50,15 @@ func NewProvisioner(
 	provisionerName string,
 	provisioner provisioner.Provisioner,
 	options *ProvisionerOptions,
-) *provisionerController {
+) *ProvisionerController {
 
 	klog.Info("Constructing new provisioner: %s", provisionerName)
 
 	var err error
 
-	ctrl := &provisionerController{
-		provisioner: provisioner,
-		name:        provisionerName,
+	ctrl := &ProvisionerController{
+		Provisioner: provisioner,
+		Name:        provisionerName,
 	}
 
 	// TODO manage.Options.SyncPeriod may be worth looking at
@@ -67,12 +67,12 @@ func NewProvisioner(
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
 	klog.V(util.DebugLogLvl).Infof("generating controller manager")
-	ctrl.manager, err = manager.New(cfg, manager.Options{})
+	ctrl.Manager, err = manager.New(cfg, manager.Options{})
 	if err != nil {
 		klog.Fatalf("Error creating controller manager: %v", err)
 	}
 
-	if err = apis.AddToScheme(ctrl.manager.GetScheme()); err != nil {
+	if err = apis.AddToScheme(ctrl.Manager.GetScheme()); err != nil {
 		klog.Fatalf("Error adding api resources to scheme")
 	}
 
@@ -83,7 +83,7 @@ func NewProvisioner(
 
 	// Init ObjectBucketClaim controller.
 	// Events for child ConfigMaps and Secrets trigger Reconcile of parent ObjectBucketClaim
-	err = builder.ControllerManagedBy(ctrl.manager).
+	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		Owns(&v1.ConfigMap{}).
 		Owns(&v1.Secret{}).
@@ -100,7 +100,7 @@ func NewProvisioner(
 	// TODO I put this here after we decided that OBs should
 	//  be Reconciled independently, similar to PVs.  This may
 	//  not be what we ultimately want.
-	if err = builder.ControllerManagedBy(ctrl.manager).
+	if err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucket{}).
 		Complete(&bucketReconciler.ObjectBucketReconciler{Client: rc}); err != nil {
 		klog.Fatalf("Error creating ObjectBucket controller: %v", err)
@@ -111,7 +111,7 @@ func NewProvisioner(
 }
 
 // Run starts the claim and bucket controllers.
-func (p *provisionerController) Run() {
-	klog.Infof("Starting controller for %s provisioner", p.name)
-	go p.manager.Start(signals.SetupSignalHandler())
+func (p *ProvisionerController) Run() {
+	klog.Infof("Starting controller for %s provisioner", p.Name)
+	go p.Manager.Start(signals.SetupSignalHandler())
 }
