@@ -3,10 +3,13 @@ package util
 import (
 	"context"
 	"fmt"
-	"k8s.io/klog"
 	"net/url"
+	"path"
 	"strconv"
+	"strings"
 	"time"
+
+	"k8s.io/klog"
 
 	"k8s.io/apimachinery/pkg/types"
 
@@ -35,8 +38,7 @@ const (
 	BucketURL       = "BUCKET_URL"
 	BucketSSL       = "BUCKET_SSL"
 
-	InfoLogLvl = iota // only here for completeness, it's no different than calling klog.Info()
-	DebugLogLvl
+	DebugLogLvl = 2
 
 	DomainPrefix = "objectbucket.io"
 	Finalizer    = DomainPrefix + "/finalizer"
@@ -70,7 +72,7 @@ func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, client client.Client,
 
 // NewCredentailsSecret returns a secret with data appropriate to the supported authenticaion method
 // Right now, this is just access keys
-func NewCredentailsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*v1.Secret, error) {
+func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*v1.Secret, error) {
 
 	if obc == nil {
 		return nil, fmt.Errorf("ObjectBucketClaim required to generate secret")
@@ -97,16 +99,27 @@ func NewCredentailsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 	return secret, nil
 }
 
-func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) *v1.ConfigMap {
+func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*v1.ConfigMap, error) {
 
-	bucketPath := &url.URL{
-		Opaque:     "",
-		Host:       fmt.Sprintf("%s:%d", ep.BucketHost, ep.BucketPort),
-		Path:       fmt.Sprintf("%s/%s/%s", ep.Region, ep.SubRegion, ep.BucketName),
-		RawPath:    "",
-		ForceQuery: false,
-		RawQuery:   "",
-		Fragment:   "",
+	if ep == nil || obc == nil {
+		return nil, fmt.Errorf("v1alpha1.Endpoint and v1alpha1.ObjectbucketClaim cannot be nil")
+	}
+
+	var host, bucketPath string
+	if obc.Spec.SSL {
+		host = "https://" + ep.BucketHost
+	} else {
+		host = "http://" + ep.BucketHost
+	}
+	if ep.BucketPort > 0 {
+		host = fmt.Sprintf("%s:%d", host, ep.BucketPort)
+	}
+	bucketPath = path.Join(ep.Region, ep.SubRegion, ep.BucketName)
+
+	bucketURL, err := url.Parse(fmt.Sprintf("%s/%s", host, bucketPath))
+	if err != nil {
+		fmt.Errorf("error composing bucket url %q: %v", bucketURL, err)
+		return nil, fmt.Errorf("malformed bucket url %q: %v", bucketPath, err)
 	}
 
 	return &v1.ConfigMap{
@@ -121,9 +134,9 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			BucketSSL:       strconv.FormatBool(ep.SSL),
 			BucketRegion:    ep.Region,
 			BucketSubRegion: ep.SubRegion,
-			BucketURL:       bucketPath.String(),
+			BucketURL:       bucketURL.String(),
 		},
-	}
+	}, nil
 }
 
 func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection) *v1alpha1.ObjectBucket {
@@ -139,6 +152,11 @@ func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Conne
 }
 
 func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
+
+	if c == nil {
+		return fmt.Errorf("error creating object, nil client")
+	}
+
 	return wait.PollImmediate(DefaultRetryBaseInterval, DefaultRetryTimeout, func() (done bool, err error) {
 		err = c.Create(context.Background(), obj)
 		if err != nil && !errors.IsAlreadyExists(err) {
@@ -149,7 +167,7 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
 }
 
 func TranslateReclaimPolicy(rp v1.PersistentVolumeReclaimPolicy) (v1alpha1.ReclaimPolicy, error) {
-	switch v1alpha1.ReclaimPolicy(rp) {
+	switch v1alpha1.ReclaimPolicy(strings.ToLower(string(rp))) {
 	case v1alpha1.ReclaimPolicyDelete:
 		return v1alpha1.ReclaimPolicyDelete, nil
 	case v1alpha1.ReclaimPolicyRetain:

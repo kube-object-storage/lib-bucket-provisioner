@@ -2,19 +2,29 @@ package util
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"reflect"
+	"regexp"
+	"strconv"
 	"testing"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 func TestStorageClassForClaim(t *testing.T) {
+
+	const (
+		storageClassName = "testStorageClass"
+	)
 
 	testObjectMeta := metav1.ObjectMeta{
 		Name:      "testname",
@@ -39,7 +49,7 @@ func TestStorageClassForClaim(t *testing.T) {
 			name: "nil OBC ptr",
 			args: args{
 				obc:    nil,
-				client: fake.NewFakeClient(),
+				client: BuildFakeClient(t),
 			},
 			want:    nil,
 			wantErr: true,
@@ -53,14 +63,45 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: "",
 					},
 				},
-				client: fake.NewFakeClient(),
+				client: BuildFakeClient(t),
 			},
 			want:    nil,
 			wantErr: false,
+		}, {
+			name: "non nil storage class name",
+			args: args{
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: testObjectMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						StorageClassName: storageClassName,
+					},
+				},
+				client: BuildFakeClient(t),
+			},
+			want: &storagev1.StorageClass{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: storageClassName,
+				},
+			},
+			wantErr: false,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
+			if tt.args.obc != nil {
+				if err := tt.args.client.Create(context.TODO(), tt.args.obc); err != nil {
+					t.Errorf("error pre-creating OBC: %v", err)
+				}
+			}
+			if tt.want != nil {
+				if err := tt.args.client.Create(context.TODO(), tt.want); err != nil {
+					t.Errorf("error pre-creating StorageClass: %v", err)
+				}
+			}
+
 			got, err := StorageClassForClaim(tt.args.obc, tt.args.client, context.TODO())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("StorageClassForClaim() error = %v, wantErr %v", err, tt.wantErr)
@@ -73,7 +114,7 @@ func TestStorageClassForClaim(t *testing.T) {
 	}
 }
 
-func TestNewCredentailsSecret(t *testing.T) {
+func TestNewCredentialsSecret(t *testing.T) {
 	const (
 		obcName      = "obc-testname"
 		obcNamespace = "obc-testnamespace"
@@ -97,7 +138,7 @@ func TestNewCredentailsSecret(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    args
-		want    *v1.Secret
+		want    *corev1.Secret
 		wantErr bool
 	}{
 		{
@@ -108,7 +149,8 @@ func TestNewCredentailsSecret(t *testing.T) {
 			},
 			want:    nil,
 			wantErr: true,
-		}, {
+		},
+		{
 			name: "with nil Authentication ptr",
 			args: args{
 				obc:            &v1alpha1.ObjectBucketClaim{},
@@ -116,7 +158,8 @@ func TestNewCredentailsSecret(t *testing.T) {
 			},
 			want:    nil,
 			wantErr: true,
-		}, {
+		},
+		{
 			name: "with an authentication type defined (access keys)",
 			args: args{
 				obc: &v1alpha1.ObjectBucketClaim{
@@ -129,7 +172,7 @@ func TestNewCredentailsSecret(t *testing.T) {
 					},
 				},
 			},
-			want: &v1.Secret{
+			want: &corev1.Secret{
 				ObjectMeta: testObjectMeta,
 				StringData: map[string]string{
 					v1alpha1.AwsKeyField:    authKey,
@@ -137,7 +180,8 @@ func TestNewCredentailsSecret(t *testing.T) {
 				},
 			},
 			wantErr: false,
-		}, {
+		},
+		{
 			name: "with empty access keys",
 			args: args{
 				obc: &v1alpha1.ObjectBucketClaim{
@@ -150,7 +194,7 @@ func TestNewCredentailsSecret(t *testing.T) {
 					},
 				},
 			},
-			want: &v1.Secret{
+			want: &corev1.Secret{
 				ObjectMeta: testObjectMeta,
 				StringData: map[string]string{
 					v1alpha1.AwsKeyField:    "",
@@ -163,7 +207,7 @@ func TestNewCredentailsSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewCredentailsSecret(tt.args.obc, tt.args.authentication)
+			got, err := NewCredentialsSecret(tt.args.obc, tt.args.authentication)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewCredentailsSecret() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -176,20 +220,64 @@ func TestNewCredentailsSecret(t *testing.T) {
 }
 
 func TestCreateUntilDefaultTimeout(t *testing.T) {
-	type args struct {
-		obj runtime.Object
-		c   client.Client
+
+	fakeClient := BuildFakeClient(t)
+
+	objMeta := metav1.ObjectMeta{
+		Namespace: "testNamespace",
+		Name:      "testName",
 	}
+
+	type args struct {
+		obj        runtime.Object
+		fakeClient client.Client
+	}
+
 	tests := []struct {
 		name    string
 		args    args
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "nil runtime object",
+			args: args{
+				obj:        nil,
+				fakeClient: fakeClient,
+			},
+			wantErr: true,
+		},
+		{
+			name: "nil client",
+			args: args{
+				obj:        &corev1.Pod{}, // arbitrary runtime.Object
+				fakeClient: nil,
+			},
+			wantErr: true,
+		},
+		{
+			name: "create a k8s.io/core object",
+			args: args{
+				obj: &corev1.Secret{
+					ObjectMeta: objMeta,
+				},
+				fakeClient: fakeClient,
+			},
+			wantErr: false,
+		},
+		{
+			name: "create a v1alpha1 custom object",
+			args: args{
+				obj: &v1alpha1.ObjectBucket{
+					ObjectMeta: objMeta,
+				},
+				fakeClient: fakeClient,
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CreateUntilDefaultTimeout(tt.args.obj, tt.args.c); (err != nil) != tt.wantErr {
+			if err := CreateUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient); (err != nil) != tt.wantErr {
 				t.Errorf("CreateUntilDefaultTimeout() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -198,7 +286,7 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 
 func TestTranslateReclaimPolicy(t *testing.T) {
 	type args struct {
-		rp v1.PersistentVolumeReclaimPolicy
+		policy corev1.PersistentVolumeReclaimPolicy
 	}
 	tests := []struct {
 		name    string
@@ -206,11 +294,42 @@ func TestTranslateReclaimPolicy(t *testing.T) {
 		want    v1alpha1.ReclaimPolicy
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "nil policy",
+			args: args{
+				policy: "",
+			},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name: "unknown policy",
+			args: args{
+				policy: "foobar",
+			},
+			want:    "",
+			wantErr: true,
+		},
+		{
+			name: "retain policy",
+			args: args{
+				policy: corev1.PersistentVolumeReclaimRetain,
+			},
+			want:    v1alpha1.ReclaimPolicyRetain,
+			wantErr: false,
+		},
+		{
+			name: "delete policy",
+			args: args{
+				policy: corev1.PersistentVolumeReclaimDelete,
+			},
+			want:    v1alpha1.ReclaimPolicyDelete,
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := TranslateReclaimPolicy(tt.args.rp)
+			got, err := TranslateReclaimPolicy(tt.args.policy)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("TranslateReclaimPolicy() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -223,6 +342,9 @@ func TestTranslateReclaimPolicy(t *testing.T) {
 }
 
 func TestGenerateBucketName(t *testing.T) {
+
+	expectPattern := fmt.Sprintf("-[bcdfghjklmnpqrstvwxz0-9]{%d}", suffixLen)
+
 	type args struct {
 		prefix string
 	}
@@ -231,34 +353,182 @@ func TestGenerateBucketName(t *testing.T) {
 		args args
 		want string
 	}{
-		// TODO: Add test cases.
+		{
+			name: "empty name",
+			args: args{
+				prefix: "",
+			},
+			want: "",
+		},
+		{
+			name: "non-empty name",
+			args: args{
+				prefix: "foobar",
+			},
+			want: "(foobar)" + expectPattern,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := GenerateBucketName(tt.args.prefix); got != tt.want {
+
+			got := GenerateBucketName(tt.args.prefix)
+
+			if matches, err := regexp.MatchString(tt.want, got); err != nil {
+				t.Errorf("error matching pattern %s with %s", tt.want, got)
+			} else if !matches {
 				t.Errorf("GenerateBucketName() = %v, want %v", got, tt.want)
 			}
+
+			// pattern, err := regexp.Compile(alphaNum)
+			// if err != nil {
+			// 	t.Errorf("error generating regex pattern %q: %v", tt.want, err)
+			// }
+			// if ! pattern.MatchString(got) {
+			// 	t.Errorf("GenerateBucketName() = %v, want %v", got, tt.want)
+			// }
 		})
 	}
 }
 
 func TestNewBucketConfigMap(t *testing.T) {
+
+	const (
+		host      = "www.test.com"
+		name      = "bucket-name"
+		port      = 11111
+		ssl       = true
+		region    = "region"
+		subRegion = "sub-region"
+	)
+
+	objMeta := metav1.ObjectMeta{
+		Name:      "test-obc",
+		Namespace: "test-obc-namespace",
+	}
+
 	type args struct {
 		ep  *v1alpha1.Endpoint
 		obc *v1alpha1.ObjectBucketClaim
 	}
 	tests := []struct {
-		name string
-		args args
-		want *v1.ConfigMap
+		name    string
+		args    args
+		want    *corev1.ConfigMap
+		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name: "nil OBC",
+			args: args{
+				ep:  &v1alpha1.Endpoint{},
+				obc: nil,
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "nil Endpoint",
+			args: args{
+				ep:  nil,
+				obc: &v1alpha1.ObjectBucketClaim{},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "endpoint with region and subregion",
+			args: args{
+				ep: &v1alpha1.Endpoint{
+					BucketHost: host,
+					BucketPort: port,
+					BucketName: name,
+					Region:     region,
+					SubRegion:  subRegion,
+					SSL:        ssl,
+				},
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: objMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						BucketName: name,
+						SSL:        ssl,
+					},
+				},
+			},
+			want: &corev1.ConfigMap{
+				ObjectMeta: objMeta,
+				Data: map[string]string{
+					BucketName:      name,
+					BucketHost:      host,
+					BucketPort:      strconv.Itoa(port),
+					BucketSSL:       strconv.FormatBool(ssl),
+					BucketRegion:    region,
+					BucketSubRegion: subRegion,
+					BucketURL:       fmt.Sprintf("https://%s:%d/%s/%s/%s", host, port, region, subRegion, name),
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "endpoint with only region",
+			args: args{
+				ep: &v1alpha1.Endpoint{
+					BucketHost: host,
+					BucketPort: port,
+					BucketName: name,
+					Region:     region,
+					SubRegion:  "",
+					SSL:        ssl,
+				},
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: objMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						BucketName: name,
+						SSL:        ssl,
+					},
+				},
+			},
+			want: &corev1.ConfigMap{
+				ObjectMeta: objMeta,
+				Data: map[string]string{
+					BucketName:      name,
+					BucketHost:      host,
+					BucketPort:      strconv.Itoa(port),
+					BucketSSL:       strconv.FormatBool(ssl),
+					BucketRegion:    region,
+					BucketSubRegion: "",
+					BucketURL:       fmt.Sprintf("https://%s:%d/%s/%s", host, port, region, name),
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewBucketConfigMap(tt.args.ep, tt.args.obc); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewBucketConfigMap() = %v, want %v", got, tt.want)
+
+			got, err := NewBucketConfigMap(tt.args.ep, tt.args.obc)
+			if (err != nil) == !tt.wantErr {
+				t.Errorf("NewBucketConfigMap() error = %v, wantErr %v", err, tt.wantErr)
+			} else if !reflect.DeepEqual(got, tt.want) {
+				gotjson, _ := json.MarshalIndent(got, "", "\t")
+				wantjson, _ := json.MarshalIndent(tt.want, "", "\t")
+				t.Errorf("NewBucketConfigMap() = %v, want %v", string(gotjson), string(wantjson))
 			}
 		})
 	}
+}
+
+func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient client.Client) {
+
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Errorf("error adding core/v1 scheme: %v", err)
+	}
+	if err := storagev1.AddToScheme(scheme); err != nil {
+		t.Errorf("error adding storage/v1 scheme: %v", err)
+	}
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Errorf("error adding storage/v1 scheme: %v", err)
+	}
+	fakeClient = fake.NewFakeClientWithScheme(scheme, initObjs...)
+
+	return fakeClient
 }
