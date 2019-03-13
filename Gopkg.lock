@@ -619,7 +619,6 @@
   digest = "1:6963ab868fc30227a5fdb92faeac099a2b70aee9256eff104d6f69b30a7bc161"
   name = "sigs.k8s.io/controller-runtime"
   packages = [
-    ".",
     "pkg/builder",
     "pkg/cache",
     "pkg/cache/internal",
@@ -628,7 +627,6 @@
     "pkg/client/config",
     "pkg/client/fake",
     "pkg/controller",
-    "pkg/controller/controllerutil",
     "pkg/event",
     "pkg/handler",
     "pkg/internal/controller",
@@ -698,7 +696,6 @@
     "k8s.io/code-generator/cmd/lister-gen",
     "k8s.io/gengo/args",
     "k8s.io/klog",
-    "sigs.k8s.io/controller-runtime",
     "sigs.k8s.io/controller-runtime/pkg/builder",
     "sigs.k8s.io/controller-runtime/pkg/client",
     "sigs.k8s.io/controller-runtime/pkg/client/fake",
