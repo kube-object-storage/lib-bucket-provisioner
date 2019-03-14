@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/bucket-reconciler"
