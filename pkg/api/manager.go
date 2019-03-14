@@ -96,6 +96,8 @@ func NewProvisioner(
 		klog.Fatalf("Error creating ObjectBucketClaim controller: %v", err)
 	}
 
+	// TODO retrieve client generated in manager instead of expecting one to be passed in
+
 	// Init ObjectBucket controller
 	// TODO I put this here after we decided that OBs should
 	//  be Reconciled independently, similar to PVs.  This may

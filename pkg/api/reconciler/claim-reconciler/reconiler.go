@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog"
 
@@ -126,8 +126,8 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *provisioner.Bucke
 	var (
 		ob         *v1alpha1.ObjectBucket
 		connection *v1alpha1.Connection
-		secret     *v1.Secret
-		configMap  *v1.ConfigMap
+		secret     *corev1.Secret
+		configMap  *corev1.ConfigMap
 		err        error
 	)
 
@@ -153,7 +153,7 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *provisioner.Bucke
 		return fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 
-	secret, err = util.NewCredentailsSecret(options.ObjectBucketClaim, connection.Authentication)
+	secret, err = util.NewCredentialsSecret(options.ObjectBucketClaim, connection.Authentication)
 	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
 		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
