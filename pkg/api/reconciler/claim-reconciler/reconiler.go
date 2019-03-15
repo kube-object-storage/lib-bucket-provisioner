@@ -158,7 +158,11 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *provisioner.Bucke
 		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 
-	configMap = util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
+	configMap, err = util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
+	if err != nil {
+		fmt.Errorf("error composing configmap for ObjectBucketClaim %q: %v", options.ObjectBucketClaim, err)
+		return nil
+	}
 	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
 		return fmt.Errorf("unable to create ConfigMap %q for claim %q: %v", configMap.Name, options.ObjectBucketClaim.Name)
 	}
