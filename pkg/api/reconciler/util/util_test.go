@@ -9,13 +9,12 @@ import (
 	"strconv"
 	"testing"
 
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
@@ -85,6 +84,20 @@ func TestStorageClassForClaim(t *testing.T) {
 				},
 			},
 			wantErr: false,
+		},
+		{
+			name: "storage class does not exist",
+			args: args{
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: testObjectMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						StorageClassName: storageClassName,
+					},
+				},
+				client: BuildFakeClient(t),
+			},
+			want:    nil,
+			wantErr: true,
 		},
 	}
 
@@ -500,6 +513,83 @@ func TestNewBucketConfigMap(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "with endpoint defined (non-SSL)",
+			args: args{
+				ep: &v1alpha1.Endpoint{
+					BucketHost: host,
+					BucketPort: port,
+					BucketName: name,
+					Region:     region,
+					SubRegion:  subRegion,
+					SSL:        !ssl,
+				},
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: objMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						BucketName: name,
+						SSL:        !ssl,
+					},
+				},
+			},
+			want: &corev1.ConfigMap{
+				ObjectMeta: objMeta,
+				Data: map[string]string{
+					BucketName:      name,
+					BucketHost:      host,
+					BucketPort:      strconv.Itoa(port),
+					BucketSSL:       strconv.FormatBool(!ssl),
+					BucketRegion:    region,
+					BucketSubRegion: subRegion,
+					BucketURL:       fmt.Sprintf("http://%s:%d/%s/%s/%s", host, port, region, subRegion, name),
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "with no bucket defined",
+			args: args{
+				ep: &v1alpha1.Endpoint{
+					BucketHost: host,
+					BucketPort: port,
+					BucketName: "",
+					Region:     region,
+					SubRegion:  subRegion,
+					SSL:        !ssl,
+				},
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: objMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						BucketName: name,
+						SSL:        !ssl,
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "with no host defined",
+			args: args{
+				ep: &v1alpha1.Endpoint{
+					BucketHost: "",
+					BucketPort: port,
+					BucketName: name,
+					Region:     region,
+					SubRegion:  subRegion,
+					SSL:        !ssl,
+				},
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: objMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						BucketName: name,
+						SSL:        !ssl,
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -511,6 +601,69 @@ func TestNewBucketConfigMap(t *testing.T) {
 				gotjson, _ := json.MarshalIndent(got, "", "\t")
 				wantjson, _ := json.MarshalIndent(tt.want, "", "\t")
 				t.Errorf("NewBucketConfigMap() = %v, want %v", string(gotjson), string(wantjson))
+			}
+		})
+	}
+}
+
+func TestNewObjectBucket(t *testing.T) {
+
+	const objName, objNamespace = "test-name", "test-namespace"
+
+	type args struct {
+		obc        *v1alpha1.ObjectBucketClaim
+		connection *v1alpha1.Connection
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    *v1alpha1.ObjectBucket
+		wantErr bool
+	}{
+		{
+			name: "catch nil inputs",
+			args: args{
+				obc:        nil,
+				connection: nil,
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "expected output",
+			args: args{
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-name",
+						Namespace: "test-namespace",
+					},
+					Spec: v1alpha1.ObjectBucketClaimSpec{},
+				},
+				connection: &v1alpha1.Connection{
+					Endpoint:       nil,
+					Authentication: nil,
+				},
+			},
+			want: &v1alpha1.ObjectBucket{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(obNamePattern, objNamespace, objName),
+				},
+				Spec: v1alpha1.ObjectBucketSpec{
+					Connection: &v1alpha1.Connection{},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NewObjectBucket(tt.args.obc, tt.args.connection)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewObjectBucket() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewObjectBucket() = %v, want %v", got, tt.want)
 			}
 		})
 	}
