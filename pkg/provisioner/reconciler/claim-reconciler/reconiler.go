@@ -13,16 +13,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
 type objectBucketClaimReconciler struct {
 	ctx             context.Context
 	client          client.Client
 	provisionerName string
-	provisioner     provisioner.Provisioner
+	provisioner     api.Provisioner
 	retryInterval   time.Duration
 	retryTimeout    time.Duration
 	retryBackoff    int
@@ -36,7 +36,7 @@ type Options struct {
 	RetryBackoff  int
 }
 
-func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner provisioner.Provisioner, options Options) *objectBucketClaimReconciler {
+func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner api.Provisioner, options Options) *objectBucketClaimReconciler {
 	if options.RetryInterval < util.DefaultRetryBaseInterval {
 		options.RetryInterval = util.DefaultRetryBaseInterval
 	}
@@ -99,7 +99,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		bucketName = util.GenerateBucketName(obc.Spec.GeneratBucketName)
 	}
 
-	options := &provisioner.BucketOptions{
+	options := &api.BucketOptions{
 		ReclaimPolicy:     reclaimPolicy,
 		ObjectBucketName:  fmt.Sprintf("obc-%s-%s", obc.Namespace, obc.Name),
 		BucketName:        bucketName,
@@ -117,7 +117,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (r *objectBucketClaimReconciler) handelReconcile(options *provisioner.BucketOptions) error {
+func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions) error {
 
 	// ///   ///   ///   ///   ///   ///   ///
 	// TODO    CAUTION! UNDER CONSTRUCTION!

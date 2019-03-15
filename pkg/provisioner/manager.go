@@ -1,9 +1,9 @@
-package api
+package provisioner
 
 import (
 	"time"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/util"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
@@ -13,11 +13,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
-	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/bucket-reconciler"
-	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/api/reconciler/claim-reconciler"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/bucket-reconciler"
+	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/claim-reconciler"
 )
 
 // ProvisionerController is the first iteration of our internal provisioning
@@ -26,7 +26,7 @@ import (
 type ProvisionerController struct {
 	Manager     manager.Manager
 	Name        string
-	Provisioner provisioner.Provisioner
+	Provisioner api.Provisioner
 }
 
 type ProvisionerOptions struct {
@@ -48,7 +48,7 @@ type ProvisionerOptions struct {
 func NewProvisioner(
 	cfg *rest.Config,
 	provisionerName string,
-	provisioner provisioner.Provisioner,
+	provisioner api.Provisioner,
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 

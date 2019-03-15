@@ -7,9 +7,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 
-	lib "github.com/yard-turkey/lib-bucket-provisioner/pkg/api"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/api/provisioner"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	lib "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
 var (
@@ -28,7 +28,7 @@ func init() {
 type dummyProvidioner struct {
 }
 
-func (p *dummyProvidioner) Provision(options *provisioner.BucketOptions) (*v1alpha1.ObjectBucket, error) {
+func (p *dummyProvidioner) Provision(options *api.BucketOptions) (*v1alpha1.ObjectBucket, error) {
 	return &v1alpha1.ObjectBucket{}, nil
 }
 
