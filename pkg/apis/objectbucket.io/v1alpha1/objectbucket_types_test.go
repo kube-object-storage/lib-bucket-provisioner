@@ -44,34 +44,24 @@ func TestAccessKeys_toMap(t *testing.T) {
 	}
 }
 
-func TestAuthSource_ToMap(t *testing.T) {
+func TestAuthentication_ToMap(t *testing.T) {
+	type fields struct {
+		AccessKeys *AccessKeys
+	}
 	tests := []struct {
-		name string
-		a    *AuthSource
-		want map[string]string
+		name   string
+		fields fields
+		want   map[string]string
 	}{
-		{
-			name: "with no fields declared",
-			a:    &AuthSource{},
-			want: map[string]string{},
-		}, {
-			name: "with AccessKeys defined",
-			a: &AuthSource{
-				AccessKeys: &AccessKeys{
-					AccessKeyId:     authKey,
-					SecretAccessKey: authSecret,
-				},
-			},
-			want: map[string]string{
-				AwsKeyField:    authKey,
-				AwsSecretField: authSecret,
-			},
-		},
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.a.ToMap(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("AuthSource.ToMap() = %v, want %v", got, tt.want)
+			a := &Authentication{
+				AccessKeys: tt.fields.AccessKeys,
+			}
+			if got := a.ToMap(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Authentication.ToMap() = %v, want %v", got, tt.want)
 			}
 		})
 	}
