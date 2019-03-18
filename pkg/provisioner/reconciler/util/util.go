@@ -103,7 +103,7 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 		return nil, fmt.Errorf("v1alpha1.Endpoint and v1alpha1.ObjectbucketClaim cannot be nil")
 	}
 	if ep.BucketName == "" {
-		return nil, fmt.Errorf("no bucket name defined for OBC \"%s\\%s\"", obc.Namespace, obc.Name)
+		return nil, fmt.Errorf("no bucket name defined")
 	}
 	if ep.BucketHost == "" {
 		return nil, fmt.Errorf("no bucket host provided, cannot compose URL")
@@ -137,7 +137,7 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 	}, nil
 }
 
-const obNamePattern = "obc-%s-%s"
+const ObjectBucketFormat = "obc-%s-%s"
 
 func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection) (*v1alpha1.ObjectBucket, error) {
 	if obc == nil || connection == nil {
@@ -145,7 +145,7 @@ func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Conne
 	}
 	return &v1alpha1.ObjectBucket{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf(obNamePattern, obc.Namespace, obc.Name),
+			Name: fmt.Sprintf(ObjectBucketFormat, obc.Namespace, obc.Name),
 		},
 		Spec: v1alpha1.ObjectBucketSpec{
 			Connection: connection,

@@ -646,7 +646,7 @@ func TestNewObjectBucket(t *testing.T) {
 			},
 			want: &v1alpha1.ObjectBucket{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf(obNamePattern, objNamespace, objName),
+					Name: fmt.Sprintf(ObjectBucketFormat, objNamespace, objName),
 				},
 				Spec: v1alpha1.ObjectBucketSpec{
 					Connection: &v1alpha1.Connection{},

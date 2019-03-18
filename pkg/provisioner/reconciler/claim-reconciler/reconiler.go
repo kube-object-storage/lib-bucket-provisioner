@@ -60,7 +60,7 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner ap
 	}
 }
 
-// Reconcile implementes the Reconciler interface.  This function contains the business logic of the
+// Reconcile implements the Reconciler interface.  This function contains the business logic of the
 // OBC controller.  Currently, the process strictly serves as a POC for an OBC controller and is
 // extremely fragile.
 func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
@@ -123,6 +123,10 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 	// TODO    CAUTION! UNDER CONSTRUCTION!
 	// ///   ///   ///   ///   ///   ///   ///
 
+	if options == nil {
+		return fmt.Errorf("error reconciling obj, got nil BucketOptions")
+	}
+
 	var (
 		ob         *v1alpha1.ObjectBucket
 		connection *v1alpha1.Connection
@@ -131,7 +135,7 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		err        error
 	)
 
-	// If any process of provisiong occures, clean up all artifacts of the provision process
+	// If any process of provisioning occurs, clean up all artifacts of the provision process
 	// so we can start fresh in the next iteration
 	defer func() {
 		if err != nil {
@@ -149,22 +153,29 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		return fmt.Errorf("error provisioning bucket.  got nil connection")
 	}
 
+	ob, err = util.NewObjectBucket(options.ObjectBucketClaim, connection)
+	if err != nil {
+		return fmt.Errorf("error composing object bucket: %v", err)
+	}
+
 	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
 		return fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 
 	secret, err = util.NewCredentialsSecret(options.ObjectBucketClaim, connection.Authentication)
+	if err != nil {
+		return fmt.Errorf("error composing secret: %v", err)
+	}
 	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
 		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 
 	configMap, err = util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
 	if err != nil {
-		fmt.Errorf("error composing configmap for ObjectBucketClaim %q: %v", options.ObjectBucketClaim, err)
-		return nil
+		return fmt.Errorf("error composing configmap for ObjectBucketClaim \"%s\\%s\": %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
 	}
 	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
-		return fmt.Errorf("unable to create ConfigMap %q for claim %q: %v", configMap.Name, options.ObjectBucketClaim.Name)
+		return fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
 	}
 
 	return nil
@@ -176,7 +187,7 @@ func (r *objectBucketClaimReconciler) shouldProvision(obc *v1alpha1.ObjectBucket
 
 	class, err := util.StorageClassForClaim(obc, r.client, r.ctx)
 	if err != nil {
-		klog.Errorf("error confirming if we should provision: %v", err)
+		klog.Errorf("cannot provision: %v", err)
 		return false
 	}
 	if class.Provisioner != r.provisionerName {
