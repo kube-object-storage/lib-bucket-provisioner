@@ -78,7 +78,3 @@ type ObjectBucketClaimList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ObjectBucketClaim `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ObjectBucketClaim{}, &ObjectBucketClaimList{})
-}

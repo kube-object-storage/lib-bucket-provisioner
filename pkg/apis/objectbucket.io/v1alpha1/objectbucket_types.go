@@ -119,7 +119,3 @@ type ObjectBucketList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ObjectBucket `json:"items"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ObjectBucket{}, &ObjectBucketList{})
-}

@@ -1,5 +1,8 @@
 // Package v1alpha1 contains API Schema definitions for the objectbucket v1alpha1 API group
 // +k8s:deepcopy-gen=package,register
+// +k8s:default-gen=TypeMeta
+// +k8s:conversion-gen=lib-bucket-provisioner/pkg/apis/objectbucket.io
+// +k8s:openapi-gen=true
 // +groupName=objectbucket.io
 package v1alpha1
 
@@ -26,4 +29,12 @@ func Kind(kind string) schema.GroupKind {
 // Resource takes an unqualified resource and returns a Group qualified GroupResource
 func Resource(resource string) schema.GroupResource {
 	return SchemeGroupVersion.WithResource(resource).GroupResource()
+}
+
+func init() {
+	SchemeBuilder.Register(
+		&ObjectBucketClaim{},
+		&ObjectBucketClaimList{},
+		&ObjectBucket{},
+		&ObjectBucketList{})
 }

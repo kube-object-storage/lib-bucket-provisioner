@@ -51,7 +51,7 @@ func NewProvisioner(
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 
-	klog.Info("Constructing new provisioner: %s", provisionerName)
+	klog.Infof("Constructing new provisioner: %s", provisionerName)
 
 	var err error
 
