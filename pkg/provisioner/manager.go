@@ -9,7 +9,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
@@ -76,7 +75,7 @@ func NewProvisioner(
 		klog.Fatalf("Error adding api resources to scheme")
 	}
 
-	rc, err := client.New(cfg, client.Options{})
+	rc := ctrl.Manager.GetClient()
 	if err != nil {
 		klog.Fatalf("Error generating new client: %v", err)
 	}
