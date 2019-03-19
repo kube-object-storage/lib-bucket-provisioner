@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	"k8s.io/klog"
@@ -165,16 +164,6 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
 		}
 		return true, nil
 	})
-}
-
-func TranslateReclaimPolicy(rp v1.PersistentVolumeReclaimPolicy) (v1alpha1.ReclaimPolicy, error) {
-	switch v1alpha1.ReclaimPolicy(strings.ToLower(string(rp))) {
-	case v1alpha1.ReclaimPolicyDelete:
-		return v1alpha1.ReclaimPolicyDelete, nil
-	case v1alpha1.ReclaimPolicyRetain:
-		return v1alpha1.ReclaimPolicyRetain, nil
-	}
-	return "", fmt.Errorf("unrecognized reclaim policy %q", rp)
 }
 
 const suffixLen = 5

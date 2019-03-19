@@ -76,6 +76,7 @@ func NewProvisioner(
 		klog.Fatalf("Error adding api resources to scheme")
 	}
 
+
 	rc, err := client.New(cfg, client.Options{})
 	if err != nil {
 		klog.Fatalf("Error generating new client: %v", err)

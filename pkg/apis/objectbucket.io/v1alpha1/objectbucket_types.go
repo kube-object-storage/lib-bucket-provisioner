@@ -5,13 +5,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type ReclaimPolicy string
-
-const (
-	ReclaimPolicyDelete ReclaimPolicy = "delete"
-	ReclaimPolicyRetain ReclaimPolicy = "retain"
-)
-
 type mapper interface {
 	toMap() map[string]string
 }
@@ -77,9 +70,9 @@ type Connection struct {
 // Authentication must be of a type defined in this package to
 // pass type checks in reconciler
 type ObjectBucketSpec struct {
-	StorageClassName string              `json:"storageClassName"`
-	ReclaimPolicy    ReclaimPolicy       `json:"reclaimPolicy"`
-	ClaimRef         *v1.ObjectReference `json:"claimRef"`
+	StorageClassName string                            `json:"storageClassName"`
+	ReclaimPolicy    *v1.PersistentVolumeReclaimPolicy `json:"reclaimPolicy"`
+	ClaimRef         *v1.ObjectReference               `json:"claimRef"`
 	*Connection      `json:"Connection"`
 }
 
