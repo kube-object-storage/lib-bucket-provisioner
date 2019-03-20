@@ -1,8 +1,9 @@
 package api
 
 import (
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 // Provisioner the interface to be implemented by users of this
