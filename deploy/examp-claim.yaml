@@ -1,0 +1,14 @@
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: MY-BUCKET-1 [1]
+  namespace: USER-NAMESPACE [2]
+spec:
+  bucketName: [3]
+  generateBucketName: "photo-booth" [4]
+  storageClassName: AN-OBJECT-STORE-STORAGE-CLASS [5]
+  SSL: true | false [6]
+  cannedBucketACL: [7]
+  versioned: true | false [8]
+  additionalConfig: [9]
+    ANY_KEY: VALUE ...
