@@ -65,7 +65,7 @@ func TestStorageClassForClaim(t *testing.T) {
 				client: BuildFakeClient(t),
 			},
 			want:    nil,
-			wantErr: false,
+			wantErr: true,
 		}, {
 			name: "non nil storage class name",
 			args: args{
@@ -292,63 +292,6 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := CreateUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient); (err != nil) != tt.wantErr {
 				t.Errorf("CreateUntilDefaultTimeout() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestTranslateReclaimPolicy(t *testing.T) {
-	type args struct {
-		policy corev1.PersistentVolumeReclaimPolicy
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    v1alpha1.ReclaimPolicy
-		wantErr bool
-	}{
-		{
-			name: "nil policy",
-			args: args{
-				policy: "",
-			},
-			want:    "",
-			wantErr: true,
-		},
-		{
-			name: "unknown policy",
-			args: args{
-				policy: "foobar",
-			},
-			want:    "",
-			wantErr: true,
-		},
-		{
-			name: "retain policy",
-			args: args{
-				policy: corev1.PersistentVolumeReclaimRetain,
-			},
-			want:    v1alpha1.ReclaimPolicyRetain,
-			wantErr: false,
-		},
-		{
-			name: "delete policy",
-			args: args{
-				policy: corev1.PersistentVolumeReclaimDelete,
-			},
-			want:    v1alpha1.ReclaimPolicyDelete,
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := TranslateReclaimPolicy(tt.args.policy)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("TranslateReclaimPolicy() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("TranslateReclaimPolicy() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -684,9 +627,4 @@ func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient clien
 	fakeClient = fake.NewFakeClientWithScheme(scheme, initObjs...)
 
 	return fakeClient
-}
-
-func TestMain(m *testing.M) {
-	InitTestFlags()
-	m.Run()
 }
