@@ -146,6 +146,7 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		}
 	}()
 
+	klog.V(util.DebugLogLvl).Infof("Provisioning bucket %q", options.BucketName)
 	connection, err = r.provisioner.Provision(options)
 	if err != nil {
 		return fmt.Errorf("error provisioning bucket: %v", err)
