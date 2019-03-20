@@ -119,10 +119,21 @@ func (p *ProvisionerController) Run() {
 }
 
 func init() {
-	klog.InitFlags(nil)
 	if !flag.Parsed() {
 		flag.Parse()
 	}
+
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+		kflag := klogFlags.Lookup(f.Name)
+		if kflag != nil {
+			val := f.Value.String()
+			kflag.Value.Set(val)
+		}
+	})
+
 	klog.Infoln("Logging initialized")
 	klog.V(util.DebugLogLvl).Infoln("DEBUG LOGS ENABLED")
 }
