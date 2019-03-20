@@ -52,10 +52,8 @@ func NewProvisioner(
 	provisioner api.Provisioner,
 	options *ProvisionerOptions,
 ) *ProvisionerController {
-
-	klog.Infof("Constructing new provisioner: %s", provisionerName)
+	klog.V(2).Infof("constructing new provisioner: %s", provisionerName)
 	var err error
-
 	ctrl := &ProvisionerController{
 		Provisioner: provisioner,
 		Name:        provisionerName,
@@ -69,16 +67,16 @@ func NewProvisioner(
 	klog.V(util.DebugLogLvl).Infof("generating controller manager")
 	ctrl.Manager, err = manager.New(cfg, manager.Options{})
 	if err != nil {
-		klog.Fatalf("Error creating controller manager: %v", err)
+		klog.Fatalf("error creating controller manager: %v", err)
 	}
 
 	if err = apis.AddToScheme(ctrl.Manager.GetScheme()); err != nil {
-		klog.Fatalf("Error adding api resources to scheme")
+		klog.Fatalf("error adding api resources to scheme")
 	}
 
 	rc, err := client.New(cfg, client.Options{})
 	if err != nil {
-		klog.Fatalf("Error generating new client: %v", err)
+		klog.Fatalf("error generating new client: %v", err)
 	}
 
 	// Init ObjectBucketClaim controller.
@@ -94,7 +92,7 @@ func NewProvisioner(
 			RetryTimeout:  options.ProvisionRetryTimeout,
 		}))
 	if err != nil {
-		klog.Fatalf("Error creating ObjectBucketClaim controller: %v", err)
+		klog.Fatalf("error creating ObjectBucketClaim controller: %v", err)
 	}
 
 	// TODO retrieve client generated in manager instead of expecting one to be passed in
@@ -106,7 +104,7 @@ func NewProvisioner(
 	if err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucket{}).
 		Complete(&bucketReconciler.ObjectBucketReconciler{Client: rc}); err != nil {
-		klog.Fatalf("Error creating ObjectBucket controller: %v", err)
+		klog.Fatalf("error creating ObjectBucket controller: %v", err)
 	}
 
 	return ctrl
@@ -121,16 +119,10 @@ func (p *ProvisionerController) Run() {
 }
 
 func init() {
+	klog.InitFlags(nil)
 	if !flag.Parsed() {
 		flag.Parse()
 	}
-	fs := flag.NewFlagSet("provisioner-library", flag.ExitOnError)
-	klog.InitFlags(fs)
-
-	if err := flag.Set("v", "2"); err != nil {
-		panic(err)
-	}
-	if err := flag.Set("alsologtostderr", "true"); err != nil {
-		panic(err)
-	}
+	klog.Infoln("Logging initialized")
+	klog.V(util.DebugLogLvl).Infoln("DEBUG LOGS ENABLED")
 }

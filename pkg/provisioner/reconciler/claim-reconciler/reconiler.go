@@ -89,18 +89,13 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return handleErr("unable to get storage class: %v", err)
 	}
 
-	reclaimPolicy, err := util.TranslateReclaimPolicy(*class.ReclaimPolicy)
-	if err != nil {
-		return handleErr("error translating core.PersistentVolumeReclaimPolicy %q to v1alpha1.ReclaimPolicy: %v", class.ReclaimPolicy, err)
-	}
-
 	bucketName := obc.Spec.BucketName
 	if bucketName == "" {
 		bucketName = util.GenerateBucketName(obc.Spec.GeneratBucketName)
 	}
 
 	options := &api.BucketOptions{
-		ReclaimPolicy:     reclaimPolicy,
+		ReclaimPolicy:     class.ReclaimPolicy,
 		ObjectBucketName:  fmt.Sprintf("obc-%s-%s", obc.Namespace, obc.Name),
 		BucketName:        bucketName,
 		ObjectBucketClaim: obc,
@@ -201,7 +196,7 @@ func (r *objectBucketClaimReconciler) claimFromKey(key client.ObjectKey) (*v1alp
 	obc := &v1alpha1.ObjectBucketClaim{}
 	if err := r.client.Get(r.ctx, key, obc); err != nil {
 		if errors.IsNotFound(err) {
-			return nil, fmt.Errorf("object for key %s does not exist. It may have been deleted after we started reconciling it", key)
+			return nil, fmt.Errorf("object for key %s does not exist. it may have been deleted before reonciliation started", key)
 		}
 	}
 	return obc, nil

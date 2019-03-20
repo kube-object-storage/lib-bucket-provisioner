@@ -3,15 +3,14 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"strings"
 	"testing"
 	"time"
-
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -27,6 +26,7 @@ const (
 	testNamespace   = "test-namespace"
 	testName        = "test-name"
 	provisionerName = "dummyProvisioner"
+	className       = "test-class"
 )
 
 var objMeta = metav1.ObjectMeta{
@@ -49,36 +49,10 @@ var testFields = fields{
 	ctx:             context.TODO(),
 	client:          nil, // generated per iteration
 	provisionerName: provisionerName,
-	provisioner:     &dummyProvisioner{},
+	provisioner:     &util.FakeProvisioner{},
 	retryInterval:   0,
 	retryTimeout:    0,
 	retryBackoff:    0,
-}
-
-type dummyProvisioner struct{}
-
-func (dp *dummyProvisioner) Provision(options *api.BucketOptions) (connection *v1alpha1.Connection, err error) {
-	if options == nil || options.ObjectBucketClaim == nil {
-		return nil, fmt.Errorf("got nil ptr")
-	}
-	return &v1alpha1.Connection{
-		Endpoint: &v1alpha1.Endpoint{
-			BucketHost: "www.test.com",
-			BucketPort: 11111,
-			BucketName: options.BucketName,
-			Region:     "",
-			SubRegion:  "",
-			SSL:        false,
-		},
-		Authentication: &v1alpha1.Authentication{},
-	}, nil
-}
-
-func (dp *dummyProvisioner) Delete(ob *v1alpha1.ObjectBucket) (err error) {
-	if ob == nil {
-		err = fmt.Errorf("got nil object bucket pointer")
-	}
-	return err
 }
 
 func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient client.Client) {
@@ -112,12 +86,71 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 		args args
 		want *objectBucketClaimReconciler
 	}{
-		// TODO: Add test cases.
+		{
+			name: "should set default options",
+			args: args{
+				c:           nil,
+				name:        provisionerName,
+				provisioner: &util.FakeProvisioner{},
+				options: Options{
+					RetryInterval: 0,
+					RetryTimeout:  0,
+					RetryBackoff:  0,
+				},
+			},
+			want: &objectBucketClaimReconciler{
+				ctx:             context.TODO(),
+				client:          nil,
+				provisionerName: strings.ToLower(provisionerName),
+				provisioner:     &util.FakeProvisioner{},
+				retryInterval:   util.DefaultRetryBaseInterval,
+				retryTimeout:    util.DefaultRetryTimeout,
+				retryBackoff:    util.DefaultRetryBackOff,
+			},
+		},
+		{
+			name: "should set defined options",
+			args: args{
+				c:           nil,
+				name:        provisionerName,
+				provisioner: &util.FakeProvisioner{},
+				options: Options{
+					RetryInterval: 4,
+					RetryTimeout:  4,
+					RetryBackoff:  4,
+				},
+			},
+			want: &objectBucketClaimReconciler{
+				ctx:             context.TODO(),
+				client:          nil,
+				provisionerName: strings.ToLower(provisionerName),
+				provisioner:     &util.FakeProvisioner{},
+				retryInterval:   4,
+				retryTimeout:    4,
+				retryBackoff:    4,
+			},
+		},
 	}
 	for _, tt := range tests {
+
+		tt.args.c = BuildFakeClient(t)
+
 		t.Run(tt.name, func(t *testing.T) {
-			if got := NewObjectBucketClaimReconciler(tt.args.c, tt.args.name, tt.args.provisioner, tt.args.options); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewObjectBucketClaimReconciler() = %v, want %v", got, tt.want)
+			got := NewObjectBucketClaimReconciler(tt.args.c, tt.args.name, tt.args.provisioner, tt.args.options)
+			if n := strings.ToLower(tt.args.name); got.provisionerName != n {
+				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() name = %v, want %v", got.provisionerName, tt.want.provisionerName)
+			}
+
+			// If the options value does not equal the set value, and the set value was not defaulted to
+			// then something has gone wrong.
+			if tt.args.options.RetryBackoff != tt.want.retryBackoff && tt.want.retryBackoff != util.DefaultRetryBackOff {
+				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() RetryBackoff = %v, want %v", got.retryBackoff, tt.want.retryBackoff)
+			}
+			if tt.args.options.RetryTimeout != tt.want.retryTimeout && tt.want.retryTimeout != util.DefaultRetryTimeout {
+				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() RetryTimeout = %v, want %v", got.retryBackoff, tt.want.retryBackoff)
+			}
+			if tt.args.options.RetryInterval != tt.want.retryInterval && tt.want.retryInterval != util.DefaultRetryBaseInterval {
+				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() RetryInterval = %v, want %v", got.retryInterval, tt.want.retryInterval)
 			}
 		})
 	}
@@ -133,6 +166,14 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 		retryTimeout    time.Duration
 		retryBackoff    int
 	}
+
+	testFields := fields{
+		ctx:             context.TODO(),
+		client:          nil,
+		provisionerName: provisionerName,
+		provisioner:     &util.FakeProvisioner{},
+	}
+
 	type args struct {
 		request reconcile.Request
 	}
@@ -143,9 +184,73 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 		want    reconcile.Result
 		wantErr bool
 	}{
-		// TODO: Add test cases.
+		{
+			name:   "should fail on empty request",
+			fields: testFields,
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: "",
+						Name:      "",
+					},
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: true,
+		},
+		{
+			name:   "should succeed for defined request",
+			fields: testFields,
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: testNamespace,
+						Name:      testName,
+					},
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: false,
+		},
+		{
+			name:   "should fail for stale request",
+			fields: testFields,
+			args: args{
+				request: reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Namespace: testNamespace,
+						Name:      testName,
+					},
+				},
+			},
+			want:    reconcile.Result{},
+			wantErr: true,
+		},
 	}
 	for _, tt := range tests {
+
+		class := &storagev1.StorageClass{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: className,
+			},
+			Provisioner: provisionerName,
+		}
+
+		tt.fields.client = BuildFakeClient(t)
+		if !tt.wantErr {
+			if err := tt.fields.client.Create(tt.fields.ctx, &v1alpha1.ObjectBucketClaim{
+				ObjectMeta: objMeta,
+				Spec: v1alpha1.ObjectBucketClaimSpec{
+					StorageClassName: className,
+				},
+			}); err != nil {
+				t.Errorf("error precreating claim: %v", err)
+			}
+			if err := tt.fields.client.Create(tt.fields.ctx, class); err != nil {
+				t.Errorf("error precreating claim: %v", err)
+			}
+		}
+
 		t.Run(tt.name, func(t *testing.T) {
 			r := &objectBucketClaimReconciler{
 				ctx:             tt.fields.ctx,
@@ -156,6 +261,7 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 				retryTimeout:    tt.fields.retryTimeout,
 				retryBackoff:    tt.fields.retryBackoff,
 			}
+
 			got, err := r.Reconcile(tt.args.request)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("objectBucketClaimReconciler.Reconcile() error = %v, wantErr %v", err, tt.wantErr)
@@ -172,10 +278,11 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 
 	const (
 		obname     = "test-ob"
-		policy     = "retain"
 		bucketName = "test-bucket"
 		className  = "test-class"
 	)
+
+	var deletePolicy = corev1.PersistentVolumeReclaimPolicy("Delete")
 
 	type args struct {
 		options *api.BucketOptions
@@ -187,7 +294,7 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:   "nil options ptr",
+			name:   "should fail when options ptr is nil",
 			fields: testFields,
 			args: args{
 				options: nil,
@@ -195,11 +302,11 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:   "provisioner method success",
+			name:   "should succeed when OBC is valid and exists",
 			fields: testFields,
 			args: args{
 				options: &api.BucketOptions{
-					ReclaimPolicy:    policy,
+					ReclaimPolicy:    &deletePolicy,
 					ObjectBucketName: obname,
 					BucketName:       bucketName,
 					ObjectBucketClaim: &v1alpha1.ObjectBucketClaim{
@@ -215,11 +322,11 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:   "cleanup on failure",
+			name:   "should cleanup on failure",
 			fields: testFields,
 			args: args{
 				options: &api.BucketOptions{
-					ReclaimPolicy:    "delete",
+					ReclaimPolicy:    &deletePolicy,
 					ObjectBucketName: obname,
 					BucketName:       "",
 					ObjectBucketClaim: &v1alpha1.ObjectBucketClaim{
@@ -259,13 +366,15 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 
 			reconcileErr := r.handelReconcile(tt.args.options)
 
-			// Excluding nil ptr err, check if resources were generated or cleaned up depending on
+			// Excluding expected nil ptr err, check if resources were generated or cleaned up depending on
 			// expectations
 			if tt.args.options != nil && tt.args.options.ObjectBucketClaim != nil {
 				if (reconcileErr != nil) != tt.wantErr {
-					// Got error, expected none
+					// Got an unexpected error
 					t.Errorf("objectBucketClaimReconciler.handelReconcile() error = %v, wantErr %v", reconcileErr, tt.wantErr)
 				}
+
+				// From here down, either there is no error or we got an expected error
 
 				obcKey, err := client.ObjectKeyFromObject(tt.args.options.ObjectBucketClaim)
 				if err != nil {
@@ -288,12 +397,16 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 					errList = append(errList, err)
 				}
 
-				// Got an expected error, verify the reconcile cleaned up
-				if reconcileErr != nil && tt.wantErr {
-					for _, e := range errList {
-						if !errors.IsNotFound(e) {
-							t.Errorf("unexpected error while getting resource: %v", e)
-						}
+				if reconcileErr != nil {
+					if len(errList) > 0 {
+						// Reconciler errored, generated resources were cleaned up
+						return
+					} else {
+						t.Error("reconciler errored, expected generated resources to be deleted")
+					}
+				} else {
+					if len(errList) > 0 {
+						t.Error("reconciler did not error, expected generated resources to exist")
 					}
 				}
 			}
@@ -318,7 +431,7 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 		class  *storagev1.StorageClass
 	}{
 		{
-			name:   "storage class exists",
+			name:   "should succeed if storage class exists",
 			fields: testFields,
 			args: args{
 				obc: &v1alpha1.ObjectBucketClaim{
@@ -337,7 +450,7 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 			want: true,
 		},
 		{
-			name:   "storage class does not exist (expect error)",
+			name:   "should fail if storage class does not exist",
 			fields: testFields,
 			args: args{
 				obc: &v1alpha1.ObjectBucketClaim{
@@ -351,15 +464,12 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 			want:  false,
 		},
 		{
-			name: "provisioner name mismatch",
+			name: "should TEST",
 			fields: fields{
 				ctx:             context.TODO(),
 				client:          nil,
 				provisionerName: "bad-provisioner",
-				provisioner:     &dummyProvisioner{},
-				retryInterval:   0,
-				retryTimeout:    0,
-				retryBackoff:    0,
+				provisioner:     &util.FakeProvisioner{},
 			},
 			args: args{
 				obc: &v1alpha1.ObjectBucketClaim{
@@ -473,9 +583,4 @@ func Test_objectBucketClaimReconciler_claimFromKey(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestMain(m *testing.M) {
-	util.InitTestFlags()
-	m.Run()
 }
