@@ -685,3 +685,8 @@ func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient clien
 
 	return fakeClient
 }
+
+func TestMain(m *testing.M) {
+	InitTestFlags()
+	m.Run()
+}

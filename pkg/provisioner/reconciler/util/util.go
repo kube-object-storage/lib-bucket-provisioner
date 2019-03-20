@@ -48,11 +48,8 @@ func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, client client.Client,
 	if obc == nil {
 		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
 	}
-
 	if obc.Spec.StorageClassName == "" {
-		// TODO (copejon) ignore undefined storage classes to future proofing of static binding
-		klog.Warningf("no StorageClass defined for ObjectBucketClaim \"%s/%s\"", obc.Namespace, obc.Name)
-		return nil, nil
+		return nil, fmt.Errorf("no StorageClass defined for ObjectBucketClaim \"%s/%s\"", obc.Namespace, obc.Name)
 	}
 
 	class := &storagev1.StorageClass{}

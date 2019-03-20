@@ -3,21 +3,24 @@ package reconciler
 import (
 	"context"
 	"fmt"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"testing"
 	"time"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
+
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
 const (
@@ -470,4 +473,9 @@ func Test_objectBucketClaimReconciler_claimFromKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMain(m *testing.M) {
+	util.InitTestFlags()
+	m.Run()
 }

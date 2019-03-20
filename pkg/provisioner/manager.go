@@ -1,6 +1,7 @@
 package provisioner
 
 import (
+	"flag"
 	"time"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
@@ -52,8 +53,7 @@ func NewProvisioner(
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 
-	klog.Info("Constructing new provisioner: %s", provisionerName)
-
+	klog.Infof("Constructing new provisioner: %s", provisionerName)
 	var err error
 
 	ctrl := &ProvisionerController{
@@ -83,6 +83,7 @@ func NewProvisioner(
 
 	// Init ObjectBucketClaim controller.
 	// Events for child ConfigMaps and Secrets trigger Reconcile of parent ObjectBucketClaim
+	klog.V(util.DebugLogLvl).Info("building claim controller manager")
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		Owns(&v1.ConfigMap{}).
@@ -114,6 +115,22 @@ func NewProvisioner(
 
 // Run starts the claim and bucket controllers.
 func (p *ProvisionerController) Run() {
+	defer klog.Flush()
 	klog.Infof("Starting controller for %s provisioner", p.Name)
 	go p.Manager.Start(signals.SetupSignalHandler())
+}
+
+func init() {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+	fs := flag.NewFlagSet("provisioner-library", flag.ExitOnError)
+	klog.InitFlags(fs)
+
+	if err := flag.Set("v", "2"); err != nil {
+		panic(err)
+	}
+	if err := flag.Set("alsologtostderr", "true"); err != nil {
+		panic(err)
+	}
 }
