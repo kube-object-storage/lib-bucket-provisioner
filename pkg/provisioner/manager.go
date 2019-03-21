@@ -4,14 +4,14 @@ import (
 	"flag"
 	"time"
 
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
+
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
@@ -81,8 +81,17 @@ func NewProvisioner(
 	}
 
 	skipUpdate := predicate.Funcs{
+		CreateFunc: func(createEvent event.CreateEvent) bool {
+			klog.V(util.DebugLogLvl).Info("Event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind().String(), createEvent.Meta.GetName())
+			return true
+		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
+			klog.V(util.DebugLogLvl).Info("Event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
 			return false
+		},
+		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+			klog.V(util.DebugLogLvl).Info("Event: Update (ignored) kind(%s) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind().String(), deleteEvent.Meta.GetName())
+			return true
 		},
 	}
 
