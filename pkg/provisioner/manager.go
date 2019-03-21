@@ -82,15 +82,15 @@ func NewProvisioner(
 
 	skipUpdate := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			klog.V(util.DebugLogLvl).Info("Event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind().String(), createEvent.Meta.GetName())
+			klog.V(util.DebugLogLvl).Info("event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind().String(), createEvent.Meta.GetName())
 			return true
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
-			klog.V(util.DebugLogLvl).Info("Event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
+			klog.V(util.DebugLogLvl).Info("event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
 			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			klog.V(util.DebugLogLvl).Info("Event: Update (ignored) kind(%s) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind().String(), deleteEvent.Meta.GetName())
+			klog.V(util.DebugLogLvl).Info("event: Update (ignored) kind(%s) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind().String(), deleteEvent.Meta.GetName())
 			return true
 		},
 	}
@@ -123,7 +123,6 @@ func NewProvisioner(
 	}
 
 	return ctrl
-
 }
 
 // Run starts the claim and bucket controllers.
