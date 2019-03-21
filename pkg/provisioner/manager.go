@@ -80,7 +80,7 @@ func NewProvisioner(
 
 	skipUpdate := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind().String(), createEvent.Meta.GetName())
+			klog.V(util.DebugLogLvl).Infof("event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind(), createEvent.Meta.GetName())
 			return true
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
@@ -88,7 +88,7 @@ func NewProvisioner(
 			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Delete (ignored) kind(%s) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind().String(), deleteEvent.Meta.GetName())
+			klog.V(util.DebugLogLvl).Infof("event: Delete (ignored) kind(%v) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind(), deleteEvent.Meta.GetName())
 			return true
 		},
 		GenericFunc: func(genericEvent event.GenericEvent) bool {
