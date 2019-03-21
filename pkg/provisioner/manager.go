@@ -16,7 +16,6 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
-	bucketReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/bucket-reconciler"
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/claim-reconciler"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
@@ -81,16 +80,19 @@ func NewProvisioner(
 
 	skipUpdate := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			klog.V(util.DebugLogLvl).Info("event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind().String(), createEvent.Meta.GetName())
+			klog.V(util.DebugLogLvl).Infof("event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind().String(), createEvent.Meta.GetName())
 			return true
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
-			klog.V(util.DebugLogLvl).Info("event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
+			klog.V(util.DebugLogLvl).Infof("event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
 			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			klog.V(util.DebugLogLvl).Info("event: Delete (ignored) kind(%s) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind().String(), deleteEvent.Meta.GetName())
+			klog.V(util.DebugLogLvl).Infof("event: Delete (ignored) kind(%s) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind().String(), deleteEvent.Meta.GetName())
 			return true
+		},
+		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			return false
 		},
 	}
 
@@ -108,17 +110,6 @@ func NewProvisioner(
 	if err != nil {
 		klog.Fatalf("error creating ObjectBucketClaim controller: %v", err)
 	}
-
-	// Init ObjectBucket controller
-	// TODO I put this here after we decided that OBs should
-	//  be Reconciled independently, similar to PVs.  This may
-	//  not be what we ultimately want.
-	if err = builder.ControllerManagedBy(ctrl.Manager).
-		For(&v1alpha1.ObjectBucket{}).
-		Complete(&bucketReconciler.ObjectBucketReconciler{Client: client}); err != nil {
-		klog.Fatalf("error creating ObjectBucket controller: %v", err)
-	}
-
 	return ctrl
 }
 
