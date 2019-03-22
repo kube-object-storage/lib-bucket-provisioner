@@ -73,7 +73,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	// TODO    CAUTION! UNDER CONSTRUCTION!
 	// ///   ///   ///   ///   ///   ///   ///
 
-	klog.V(util.DebugLogLvl).Infof("Reconciling object %q", request)
+	klog.V(util.DebugLogLvl).Infof("reconciling object %s", request.NamespacedName)
 
 	obc, err := r.claimFromKey(request.NamespacedName)
 	if err != nil {

@@ -51,7 +51,9 @@ func NewProvisioner(
 	provisioner api.Provisioner,
 	options *ProvisionerOptions,
 ) *ProvisionerController {
+
 	klog.V(2).Infof("constructing new provisioner: %s", provisionerName)
+
 	var err error
 	ctrl := &ProvisionerController{
 		Provisioner: provisioner,
@@ -80,7 +82,7 @@ func NewProvisioner(
 
 	skipUpdate := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Create kind(%s) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind(), createEvent.Meta.GetName())
+			klog.V(util.DebugLogLvl).Infof("event: Create kind(%v) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind(), createEvent.Meta.GetName())
 			return true
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
