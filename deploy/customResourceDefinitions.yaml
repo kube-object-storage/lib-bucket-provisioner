@@ -16,7 +16,7 @@ spec:
     shortNames:
       - ob
       - obs
-  scope: Namespaced
+  scope: Cluster
   subresources:
     status: {}
 ---
