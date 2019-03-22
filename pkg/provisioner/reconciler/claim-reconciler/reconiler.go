@@ -73,7 +73,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	// TODO    CAUTION! UNDER CONSTRUCTION!
 	// ///   ///   ///   ///   ///   ///   ///
 
-	klog.V(util.DebugLogLvl).Infof("Reconciling object %q", request)
+	klog.V(util.DebugLogLvl).Infof("reconciling object %s", request.NamespacedName)
 
 	obc, err := r.claimFromKey(request.NamespacedName)
 	if err != nil {
@@ -134,10 +134,16 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 	// so we can start fresh in the next iteration
 	defer func() {
 		if err != nil {
-			_ = r.provisioner.Delete(ob)
-			_ = r.client.Delete(context.Background(), ob)
-			_ = r.client.Delete(context.Background(), secret)
-			_ = r.client.Delete(context.Background(), configMap)
+			if ob != nil {
+				_ = r.provisioner.Delete(ob)
+				_ = r.client.Delete(context.Background(), ob)
+			}
+			if secret != nil {
+				_ = r.client.Delete(context.Background(), secret)
+			}
+			if configMap != nil {
+				_ = r.client.Delete(context.Background(), configMap)
+			}
 		}
 	}()
 
