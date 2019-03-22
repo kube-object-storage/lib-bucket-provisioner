@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"github.com/google/uuid"
 	"path"
 	"strconv"
 	"time"
@@ -13,7 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog"
 
@@ -165,12 +165,26 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
 	})
 }
 
-const suffixLen = 5
+const (
+	maxNameLen     = 63
+	uuidSuffixLen  = 36
+	maxBaseNameLen = maxNameLen - uuidSuffixLen
+)
 
-func GenerateBucketName(prefix string) string {
-	suf := rand.String(suffixLen)
-	if prefix == "" {
-		return suf
+func GenerateBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
+	if (obc.Spec.BucketName == "") == (obc.Spec.GeneratBucketName == "") {
+		return "", fmt.Errorf("expected either bucketName or generateBucketName defined")
 	}
-	return fmt.Sprintf("%s-%s", prefix, suf)
+	bucketName := obc.Spec.BucketName
+	if bucketName == "" {
+		bucketName = generateBucketName(obc.Spec.GeneratBucketName)
+	}
+	return bucketName, nil
+}
+
+func generateBucketName(prefix string) string {
+	if len(prefix) > maxBaseNameLen {
+		prefix = prefix[:maxBaseNameLen-1]
+	}
+	return fmt.Sprintf("%s-%s", prefix, uuid.New())
 }
