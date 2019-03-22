@@ -134,10 +134,16 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 	// so we can start fresh in the next iteration
 	defer func() {
 		if err != nil {
-			_ = r.provisioner.Delete(ob)
-			_ = r.client.Delete(context.Background(), ob)
-			_ = r.client.Delete(context.Background(), secret)
-			_ = r.client.Delete(context.Background(), configMap)
+			if ob != nil {
+				_ = r.provisioner.Delete(ob)
+				_ = r.client.Delete(context.Background(), ob)
+			}
+			if secret != nil {
+				_ = r.client.Delete(context.Background(), secret)
+			}
+			if configMap != nil {
+				_ = r.client.Delete(context.Background(), configMap)
+			}
 		}
 	}()
 
