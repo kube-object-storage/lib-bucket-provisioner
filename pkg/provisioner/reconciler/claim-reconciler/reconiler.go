@@ -84,14 +84,14 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return handleErr("skipping provisioning for claim %s", obc.Name)
 	}
 
+	bucketName, err := util.GenerateBucketName(obc)
+	if err != nil {
+		return handleErr("error composing bucket name: %v", err)
+	}
+
 	class, err := util.StorageClassForClaim(obc, r.client, r.ctx)
 	if err != nil {
 		return handleErr("unable to get storage class: %v", err)
-	}
-
-	bucketName := obc.Spec.BucketName
-	if bucketName == "" {
-		bucketName = util.GenerateBucketName(obc.Spec.GeneratBucketName)
 	}
 
 	options := &api.BucketOptions{

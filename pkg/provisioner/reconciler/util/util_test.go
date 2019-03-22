@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -300,50 +301,50 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 }
 
 func TestGenerateBucketName(t *testing.T) {
-
-	expectPattern := fmt.Sprintf("-[bcdfghjklmnpqrstvwxz0-9]{%d}", suffixLen)
-
 	type args struct {
 		prefix string
 	}
 	tests := []struct {
-		name string
-		args args
-		want string
+		name    string
+		args    args
+		wanterr bool
 	}{
 		{
 			name: "empty name",
 			args: args{
 				prefix: "",
 			},
-			want: "",
+			wanterr: false,
 		},
 		{
-			name: "non-empty name",
+			name: "below max name",
 			args: args{
 				prefix: "foobar",
 			},
-			want: "(foobar)" + expectPattern,
+			wanterr: false,
+		},
+		{
+			name: "over max name length name",
+			args: args{
+				prefix: rand.String(maxNameLen * 2),
+			},
+			wanterr: false,
 		},
 	}
+
+	const pattern = `.*-[a-z0-9]{8}(-[a-z0-9]{4}){3}-[a-z0-9]{12}`
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			got := GenerateBucketName(tt.args.prefix)
-
-			if matches, err := regexp.MatchString(tt.want, got); err != nil {
-				t.Errorf("error matching pattern %s with %s", tt.want, got)
-			} else if !matches {
-				t.Errorf("GenerateBucketName() = %v, want %v", got, tt.want)
+			got := generateBucketName(tt.args.prefix)
+			if len(got) > maxNameLen {
+				t.Errorf("GenerateName() wanted len <= %d, got len %d", maxNameLen, len(got))
 			}
-
-			// pattern, err := regexp.Compile(alphaNum)
-			// if err != nil {
-			// 	t.Errorf("error generating regex pattern %q: %v", tt.want, err)
-			// }
-			// if ! pattern.MatchString(got) {
-			// 	t.Errorf("GenerateBucketName() = %v, want %v", got, tt.want)
-			// }
+			if match, err := regexp.MatchString(pattern, got); err != nil {
+				t.Errorf("error matching pattern: %v", err)
+			} else if !match {
+				t.Errorf("GenerateName() want match: %v, got %v", pattern, got)
+			}
 		})
 	}
 }
