@@ -4,7 +4,6 @@ import (
 	"flag"
 	"time"
 
-	"k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
 
@@ -100,8 +99,6 @@ func NewProvisioner(
 	klog.V(util.DebugLogLvl).Info("building claim controller manager")
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
-		Owns(&v1.ConfigMap{}).
-		Owns(&v1.Secret{}).
 		WithEventFilter(skipUpdate).
 		Complete(claimReconciler.NewObjectBucketClaimReconciler(client, provisionerName, provisioner, claimReconciler.Options{
 			RetryInterval: options.ProvisionBaseInterval,
