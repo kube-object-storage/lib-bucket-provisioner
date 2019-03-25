@@ -362,8 +362,9 @@ func TestNewBucketConfigMap(t *testing.T) {
 	)
 
 	objMeta := metav1.ObjectMeta{
-		Name:      "test-obc",
-		Namespace: "test-obc-namespace",
+		Name:       "test-obc",
+		Namespace:  "test-obc-namespace",
+		Finalizers: []string{Finalizer},
 	}
 
 	type args struct {

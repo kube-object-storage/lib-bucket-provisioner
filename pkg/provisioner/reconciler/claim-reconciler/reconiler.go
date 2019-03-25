@@ -146,27 +146,35 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		return fmt.Errorf("error provisioning bucket.  got nil connection")
 	}
 
+	klog.V(util.DebugLogLvl).Infof("generating new object bucket for claim %s/%s", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name)
 	ob, err = util.NewObjectBucket(options.ObjectBucketClaim, connection)
 	if err != nil {
 		return fmt.Errorf("error composing object bucket: %v", err)
 	}
 
+	klog.V(util.DebugLogLvl).Infof("creating object bucket")
 	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
 		return fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 
+	klog.V(util.DebugLogLvl).Infof("generating new secret for ObjectBucketClaim %s/%s", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name)
 	secret, err = util.NewCredentialsSecret(options.ObjectBucketClaim, connection.Authentication)
 	if err != nil {
 		return fmt.Errorf("error composing secret: %v", err)
 	}
+
+	klog.V(util.DebugLogLvl).Infof("creating secret %s/%s", secret.Namespace, secret.Name)
 	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
 		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 
+	klog.V(util.DebugLogLvl).Infof("generating new configMap for ObjectBucketClaim %s/%s", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name)
 	configMap, err = util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
 	if err != nil {
-		return fmt.Errorf("error composing configmap for ObjectBucketClaim \"%s\\%s\": %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
+		return fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
 	}
+
+	klog.V(util.DebugLogLvl).Infof("creating configMap %s/%s")
 	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
 		return fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
 	}
