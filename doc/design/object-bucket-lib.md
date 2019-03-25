@@ -299,7 +299,6 @@ data:
   BUCKET_HOST: http://MY-STORE-URL [6]
   BUCKET_PORT: 80 [7]
   BUCKET_NAME: MY-BUCKET-1 [8]
-  BUCKET_URL: http://MY-STORE-URL/MY_BUCKET_1:80 [9]
 ```
 1. same name as the OBC. Unique since the configMap is in the same namespace as the OBC.
 1. determined by the namespace of the ObjectBucketClaim.
@@ -309,7 +308,6 @@ data:
 1. host URL.
 1. host port.
 1. unique bucket name.
-1. full URL endpoint, aware of SSL flag and port.
 
 ### App Pod (independent of provisioner)
 ```yaml
@@ -329,7 +327,7 @@ spec:
         name: MY-BUCKET-1 [3]
 ```
 1. use `env:` if mapping of the defined key names to the env var names used by the app is needed.
-1. makes available to the pod as env variables: BUCKET_HOST, BUCKET_PORT, BUCKET_NAME, BUCKET_URL
+1. makes available to the pod as env variables: BUCKET_HOST, BUCKET_PORT, BUCKET_NAME
 1. makes available to the pod as env variables: ACCESS_KEY_ID, SECRET_ACCESS_KEY
 
  ### Generated OB Custom Resource
