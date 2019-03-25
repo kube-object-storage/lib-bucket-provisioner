@@ -174,7 +174,7 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		return fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
 	}
 
-	klog.V(util.DebugLogLvl).Infof("creating configMap %s/%s")
+	klog.V(util.DebugLogLvl).Infof("creating configMap %s/%s", configMap.Namespace, configMap.Name)
 	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
 		return fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
 	}
