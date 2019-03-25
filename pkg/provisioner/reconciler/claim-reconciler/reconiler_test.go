@@ -32,6 +32,7 @@ const (
 	testName        = "test-name"
 	provisionerName = "dummyProvisioner"
 	className       = "test-class"
+	bucketName      = "test-bucket"
 )
 
 var objMeta = metav1.ObjectMeta{
@@ -247,6 +248,7 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 				ObjectMeta: objMeta,
 				Spec: v1alpha1.ObjectBucketClaimSpec{
 					StorageClassName: className,
+					BucketName:       bucketName,
 				},
 			}); err != nil {
 				t.Errorf("error precreating claim: %v", err)
@@ -282,9 +284,7 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 
 	const (
-		obname     = "test-ob"
-		bucketName = "test-bucket"
-		className  = "test-class"
+		obname = "test-ob"
 	)
 
 	var deletePolicy = corev1.PersistentVolumeReclaimPolicy("Delete")
@@ -420,10 +420,6 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 }
 
 func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
-
-	const (
-		className = "test-class"
-	)
 
 	type args struct {
 		obc *v1alpha1.ObjectBucketClaim

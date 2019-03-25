@@ -134,16 +134,7 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 	// so we can start fresh in the next iteration
 	defer func() {
 		if err != nil {
-			if ob != nil {
-				_ = r.provisioner.Delete(ob)
-				_ = r.client.Delete(context.Background(), ob)
-			}
-			if secret != nil {
-				_ = r.client.Delete(context.Background(), secret)
-			}
-			if configMap != nil {
-				_ = r.client.Delete(context.Background(), configMap)
-			}
+			r.handleCleanup(ob, configMap, secret)
 		}
 	}()
 
@@ -206,4 +197,22 @@ func (r *objectBucketClaimReconciler) claimFromKey(key client.ObjectKey) (*v1alp
 		}
 	}
 	return obc, nil
+}
+
+func (r *objectBucketClaimReconciler) handleCleanup(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
+	if ob != nil {
+		if err := r.client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
+			klog.Errorf("Error deleting ObjectBucket %v: %v", ob.Name, err)
+		}
+	}
+	if s != nil {
+		if err := r.client.Delete(context.Background(), s); err != nil && errors.IsNotFound(err) {
+			klog.Errorf("Error deleting Secret %v: %v", s.Name, err)
+		}
+	}
+	if cm != nil {
+		if err := r.client.Delete(context.Background(), cm); err != nil && errors.IsNotFound(err) {
+			klog.Errorf("Error deleting ConfigMap %v: %v", cm.Name, err)
+		}
+	}
 }

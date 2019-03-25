@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"k8s.io/apimachinery/pkg/util/rand"
+	"path"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -352,7 +353,7 @@ func TestGenerateBucketName(t *testing.T) {
 func TestNewBucketConfigMap(t *testing.T) {
 
 	const (
-		host      = "www.test.com"
+		host      = "http://www.test.com"
 		name      = "bucket-name"
 		port      = 11111
 		ssl       = true
@@ -421,7 +422,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 					BucketSSL:       strconv.FormatBool(ssl),
 					BucketRegion:    region,
 					BucketSubRegion: subRegion,
-					BucketURL:       fmt.Sprintf("https://%s:%d/%s/%s/%s", host, port, region, subRegion, name),
+					BucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
 				},
 			},
 			wantErr: false,
@@ -454,7 +455,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 					BucketSSL:       strconv.FormatBool(ssl),
 					BucketRegion:    region,
 					BucketSubRegion: "",
-					BucketURL:       fmt.Sprintf("https://%s:%d/%s/%s", host, port, region, name),
+					BucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, name)),
 				},
 			},
 			wantErr: false,
@@ -487,7 +488,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 					BucketSSL:       strconv.FormatBool(!ssl),
 					BucketRegion:    region,
 					BucketSubRegion: subRegion,
-					BucketURL:       fmt.Sprintf("http://%s:%d/%s/%s/%s", host, port, region, subRegion, name),
+					BucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
 				},
 			},
 			wantErr: false,

@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/api/core/v1"
@@ -93,27 +94,9 @@ func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 // As a quality of life addition, it constructs a full URL for the bucket path.
 // Success is constrained by a defined Bucket name and Bucket host.
 func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*v1.ConfigMap, error) {
-
-	if ep == nil || obc == nil {
-		return nil, fmt.Errorf("v1alpha1.Endpoint and v1alpha1.ObjectbucketClaim cannot be nil")
+	if err := validEndpoint(ep); err != nil {
+		return nil, fmt.Errorf("error composing configMap: %v", err)
 	}
-	if ep.BucketName == "" {
-		return nil, fmt.Errorf("no bucket name defined")
-	}
-	if ep.BucketHost == "" {
-		return nil, fmt.Errorf("no bucket host provided, cannot compose URL")
-	}
-
-	var host string
-	if obc.Spec.SSL {
-		host = "https://" + ep.BucketHost
-	} else {
-		host = "http://" + ep.BucketHost
-	}
-	if ep.BucketPort > 0 {
-		host = fmt.Sprintf("%s:%d", host, ep.BucketPort)
-	}
-	bucketPath := fmt.Sprintf("%s/%s", host, path.Join(ep.Region, ep.SubRegion, ep.BucketName))
 
 	return &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -127,9 +110,27 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			BucketSSL:       strconv.FormatBool(ep.SSL),
 			BucketRegion:    ep.Region,
 			BucketSubRegion: ep.SubRegion,
-			BucketURL:       bucketPath,
+			BucketURL:       fmt.Sprintf("%s:%d/%s", ep.BucketHost, ep.BucketPort, path.Join(ep.Region, ep.SubRegion, ep.BucketName)),
 		},
 	}, nil
+}
+
+func validEndpoint(ep *v1alpha1.Endpoint) error {
+	if ep == nil {
+		return fmt.Errorf("v1alpha1.Endpoint and v1alpha1.ObjectbucketClaim cannot be nil")
+	}
+	if ep.BucketHost == "" {
+		return fmt.Errorf("bucketHost cannot be empty")
+	}
+	if ep.BucketName == "" {
+		return fmt.Errorf("bucketName cannot be empty")
+	}
+	if !(strings.HasPrefix("https://", ep.BucketHost) ||
+		!strings.HasPrefix("http://", ep.BucketHost) ||
+		!strings.HasPrefix("s3://", ep.BucketHost)) {
+		return fmt.Errorf("bucketHost must contain URL scheme")
+	}
+	return nil
 }
 
 const ObjectBucketFormat = "obc-%s-%s"
