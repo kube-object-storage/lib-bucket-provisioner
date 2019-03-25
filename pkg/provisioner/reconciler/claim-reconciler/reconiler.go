@@ -15,6 +15,7 @@ import (
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	pErr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
@@ -134,7 +135,12 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 	// so we can start fresh in the next iteration
 	defer func() {
 		if err != nil {
-			r.handleCleanup(ob, configMap, secret)
+			if !pErr.IsBucketExists(err) && ob != nil {
+				if err := r.provisioner.Delete(ob); err != nil {
+					klog.Infof("error deleting bucket: %v", err)
+				}
+			}
+			r.deleteResources(ob, configMap, secret)
 		}
 	}()
 
@@ -207,20 +213,40 @@ func (r *objectBucketClaimReconciler) claimFromKey(key client.ObjectKey) (*v1alp
 	return obc, nil
 }
 
-func (r *objectBucketClaimReconciler) handleCleanup(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
+func (r *objectBucketClaimReconciler) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
+	deleteObjectBucket(ob, r)
+	deleteSecret(s, r)
+	deleteConfigMap(cm, r)
+}
+
+func (r *objectBucketClaimReconciler) deleteBucket(ob *v1alpha1.ObjectBucket) {
 	if ob != nil {
-		if err := r.client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
-			klog.Errorf("Error deleting ObjectBucket %v: %v", ob.Name, err)
+		if err := r.provisioner.Delete(ob); err != nil {
+			klog.Errorf("error deleting object store bucket %v: %v", ob.Spec.Endpoint.BucketName, err)
 		}
 	}
+}
+
+func deleteConfigMap(cm *corev1.ConfigMap, r *objectBucketClaimReconciler) {
+	if cm != nil {
+		if err := r.client.Delete(context.Background(), cm); err != nil && errors.IsNotFound(err) {
+			klog.Errorf("Error deleting ConfigMap %v: %v", cm.Name, err)
+		}
+	}
+}
+
+func deleteSecret(s *corev1.Secret, r *objectBucketClaimReconciler) {
 	if s != nil {
 		if err := r.client.Delete(context.Background(), s); err != nil && errors.IsNotFound(err) {
 			klog.Errorf("Error deleting Secret %v: %v", s.Name, err)
 		}
 	}
-	if cm != nil {
-		if err := r.client.Delete(context.Background(), cm); err != nil && errors.IsNotFound(err) {
-			klog.Errorf("Error deleting ConfigMap %v: %v", cm.Name, err)
+}
+
+func deleteObjectBucket(ob *v1alpha1.ObjectBucket, r *objectBucketClaimReconciler) {
+	if ob != nil {
+		if err := r.client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
+			klog.Errorf("Error deleting ObjectBucket %v: %v", ob.Name, err)
 		}
 	}
 }
