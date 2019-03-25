@@ -3,11 +3,12 @@ package util
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"path"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -16,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -76,8 +76,6 @@ func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 		return nil, fmt.Errorf("got nil authentication, nothing to do")
 	}
 
-	klog.V(DebugLogLvl).Infof("generating new secret for ObjectBucketClaim \"%s/%s\"", obc.Namespace, obc.Name)
-
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       obc.Name,
@@ -100,8 +98,9 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 
 	return &v1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      obc.Name,
-			Namespace: obc.Namespace,
+			Name:       obc.Name,
+			Namespace:  obc.Namespace,
+			Finalizers: []string{Finalizer},
 		},
 		Data: map[string]string{
 			BucketName:      obc.Spec.BucketName,
@@ -156,7 +155,6 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
 	if c == nil {
 		return fmt.Errorf("error creating object, nil client")
 	}
-
 	return wait.PollImmediate(DefaultRetryBaseInterval, DefaultRetryTimeout, func() (done bool, err error) {
 		err = c.Create(context.Background(), obj)
 		if err != nil && !errors.IsAlreadyExists(err) {
