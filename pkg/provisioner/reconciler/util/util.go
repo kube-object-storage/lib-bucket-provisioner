@@ -127,7 +127,7 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			BucketSSL:       strconv.FormatBool(ep.SSL),
 			BucketRegion:    ep.Region,
 			BucketSubRegion: ep.SubRegion,
-			BucketURL:       bucketPath,
+			BucketURL:       fmt.Sprintf(""),
 		},
 	}, nil
 }
