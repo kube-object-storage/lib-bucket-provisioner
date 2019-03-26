@@ -2,8 +2,9 @@ package provisioner
 
 import (
 	"flag"
-	"github.com/go-logr/logr"
 	"time"
+
+	"github.com/go-logr/logr"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
@@ -43,8 +44,12 @@ type ProvisionerOptions struct {
 	ProvisionRetryBackoff int
 }
 
-// logD is a debug leveled logger
-var logD logr.InfoLogger
+var (
+	// logI is a regular info logger
+	logI logr.InfoLogger
+	// logD is a debug leveled logger
+	logD logr.InfoLogger
+)
 
 // NewProvisioner should be called by importers of this library to
 // instantiate a new provisioning controller. This controller will
@@ -57,9 +62,10 @@ func NewProvisioner(
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 
-	logD = klogr.New().WithName("objectbucket.io/provisioner").V(util.DebugLogLvl)
+	logI = klogr.New().WithName(util.DomainPrefix + "/provisioner/" + provisionerName)
+	logD = klogr.New().WithName(util.DomainPrefix + "/provisioner/" + provisionerName).V(util.DebugLogLvl)
 
-	logD.Info("constructing new provisioner", "name", provisionerName)
+	logI.Info("new provisioner", "name", provisionerName)
 
 	var err error
 	ctrl := &ProvisionerController{
@@ -78,10 +84,12 @@ func NewProvisioner(
 		klog.Fatalf("error creating controller manager: %v", err)
 	}
 
+	logD.Info("adding schemes to manager")
 	if err = apis.AddToScheme(ctrl.Manager.GetScheme()); err != nil {
 		klog.Fatalf("error adding api resources to scheme")
 	}
 
+	logD.Info("getting manager client")
 	client := ctrl.Manager.GetClient()
 	if err != nil {
 		klog.Fatalf("error generating new client: %v", err)
@@ -108,7 +116,7 @@ func NewProvisioner(
 
 	// Init ObjectBucketClaim controller.
 	// Events for child ConfigMaps and Secrets trigger Reconcile of parent ObjectBucketClaim
-	logD.Info("building claim controller manager")
+	logI.Info("building controller manager")
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		WithEventFilter(skipUpdate).
@@ -126,7 +134,7 @@ func NewProvisioner(
 // Run starts the claim and bucket controllers.
 func (p *ProvisionerController) Run() {
 	defer klog.Flush()
-	klog.Infof("Starting controller for %s provisioner", p.Name)
+	logI.Info("Starting manager", "provisioner", p.Name)
 	go p.Manager.Start(signals.SetupSignalHandler())
 }
 
@@ -145,6 +153,4 @@ func init() {
 			kflag.Value.Set(val)
 		}
 	})
-
-	klog.Infoln("Logging initialized")
 }
