@@ -23,27 +23,6 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
-var namespace string
-
-func init() {
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-
-	flag.StringVar(&namespace, "namespace", "", "restrict the provisioner to namespace (empty implies cluster scopred)")
-
-	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
-	klog.InitFlags(klogFlags)
-
-	flag.CommandLine.VisitAll(func(f *flag.Flag) {
-		kflag := klogFlags.Lookup(f.Name)
-		if kflag != nil {
-			val := f.Value.String()
-			kflag.Value.Set(val)
-		}
-	})
-}
-
 // ProvisionerController is the first iteration of our internal provisioning
 // controller.  The passed-in bucket provisioner, coded by the user of the
 // library, is stored for later Provision and Delete calls.
@@ -86,8 +65,10 @@ func NewProvisioner(
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 
-	logI = klogr.New().WithName(util.DomainPrefix + "/provisioner/" + provisionerName)
-	logD = klogr.New().WithName(util.DomainPrefix + "/provisioner/" + provisionerName).V(util.DebugLogLvl)
+	initFlags()
+
+	logI = klogr.New().WithName(util.DomainPrefix)
+	logD = klogr.New().WithName(util.DomainPrefix).V(util.DebugLogLvl)
 
 	logI.Info("new provisioner", "name", provisionerName)
 
@@ -95,10 +76,6 @@ func NewProvisioner(
 	ctrl := &ProvisionerController{
 		Provisioner: provisioner,
 		Name:        provisionerName,
-	}
-
-	if options.Namespace == "" {
-		options.Namespace = namespace
 	}
 
 	// TODO manage.Options.SyncPeriod may be worth looking at
@@ -164,4 +141,20 @@ func (p *ProvisionerController) Run() {
 	defer klog.Flush()
 	logI.Info("Starting manager", "provisioner", p.Name)
 	go p.Manager.Start(signals.SetupSignalHandler())
+}
+
+func initFlags() {
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+		kflag := klogFlags.Lookup(f.Name)
+		if kflag != nil {
+			val := f.Value.String()
+			kflag.Value.Set(val)
+		}
+	})
+	if !flag.Parsed() {
+		flag.Parse()
+	}
 }
