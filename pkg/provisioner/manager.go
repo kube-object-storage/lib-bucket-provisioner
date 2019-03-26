@@ -23,6 +23,27 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
+var namespace string
+
+func init() {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	flag.StringVar(&namespace, "namespace", "", "restrict the provisioner to namespace (empty implies cluster scopred)")
+
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+		kflag := klogFlags.Lookup(f.Name)
+		if kflag != nil {
+			val := f.Value.String()
+			kflag.Value.Set(val)
+		}
+	})
+}
+
 // ProvisionerController is the first iteration of our internal provisioning
 // controller.  The passed-in bucket provisioner, coded by the user of the
 // library, is stored for later Provision and Delete calls.
@@ -42,6 +63,9 @@ type ProvisionerOptions struct {
 
 	// ProvisionRetryBackoff the base interval multiplier, applied each iteration
 	ProvisionRetryBackoff int
+
+	// The namespace to which the provisioner is restricted.  Empty assumes all namespaces
+	Namespace string
 }
 
 var (
@@ -73,13 +97,17 @@ func NewProvisioner(
 		Name:        provisionerName,
 	}
 
+	if options.Namespace == "" {
+		options.Namespace = namespace
+	}
+
 	// TODO manage.Options.SyncPeriod may be worth looking at
 	//  This determines the minimum period of time objects are synced
 	//  This is especially interesting for ObjectBuckets should we decide they should sync with the underlying bucket.
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
 	logD.Info("generating controller manager")
-	ctrl.Manager, err = manager.New(cfg, manager.Options{})
+	ctrl.Manager, err = manager.New(cfg, manager.Options{Namespace: options.Namespace})
 	if err != nil {
 		klog.Fatalf("error creating controller manager: %v", err)
 	}
@@ -136,21 +164,4 @@ func (p *ProvisionerController) Run() {
 	defer klog.Flush()
 	logI.Info("Starting manager", "provisioner", p.Name)
 	go p.Manager.Start(signals.SetupSignalHandler())
-}
-
-func init() {
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-
-	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
-	klog.InitFlags(klogFlags)
-
-	flag.CommandLine.VisitAll(func(f *flag.Flag) {
-		kflag := klogFlags.Lookup(f.Name)
-		if kflag != nil {
-			val := f.Value.String()
-			kflag.Value.Set(val)
-		}
-	})
 }
