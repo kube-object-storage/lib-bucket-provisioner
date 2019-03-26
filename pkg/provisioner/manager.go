@@ -2,10 +2,12 @@ package provisioner
 
 import (
 	"flag"
+	"github.com/go-logr/logr"
 	"time"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
+	"k8s.io/klog/klogr"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -41,6 +43,9 @@ type ProvisionerOptions struct {
 	ProvisionRetryBackoff int
 }
 
+// logD is a debug leveled logger
+var logD logr.InfoLogger
+
 // NewProvisioner should be called by importers of this library to
 // instantiate a new provisioning controller. This controller will
 // respond to Add / Update / Delete events by calling the passed-in
@@ -52,7 +57,9 @@ func NewProvisioner(
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 
-	klog.V(2).Infof("constructing new provisioner: %s", provisionerName)
+	logD = klogr.New().WithName("objectbucket.io/provisioner").V(util.DebugLogLvl)
+
+	logD.Info("constructing new provisioner", "name", provisionerName)
 
 	var err error
 	ctrl := &ProvisionerController{
@@ -65,7 +72,7 @@ func NewProvisioner(
 	//  This is especially interesting for ObjectBuckets should we decide they should sync with the underlying bucket.
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
-	klog.V(util.DebugLogLvl).Infof("generating controller manager")
+	logD.Info("generating controller manager")
 	ctrl.Manager, err = manager.New(cfg, manager.Options{})
 	if err != nil {
 		klog.Fatalf("error creating controller manager: %v", err)
@@ -82,25 +89,26 @@ func NewProvisioner(
 
 	skipUpdate := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Create kind(%v) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind(), createEvent.Meta.GetName())
+			logD.Info("event: Create() ", "Kind", createEvent.Object.GetObjectKind().GroupVersionKind(), "Name", createEvent.Meta.GetName())
 			return true
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
+			logD.Info("event: Update (ignored)", "Kind", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), "Name", updateEvent.MetaNew.GetName())
 			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Delete (ignored) kind(%v) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind(), deleteEvent.Meta.GetName())
+			logD.Info("event: Delete() (ignored)", "Kind", deleteEvent.Object.GetObjectKind().GroupVersionKind(), "Name", deleteEvent.Meta.GetName())
 			return true
 		},
 		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			logD.Info("event: Generic() (ignored)", "Kind", genericEvent.Object.GetObjectKind().GroupVersionKind(), "Name", genericEvent.Meta.GetName())
 			return false
 		},
 	}
 
 	// Init ObjectBucketClaim controller.
 	// Events for child ConfigMaps and Secrets trigger Reconcile of parent ObjectBucketClaim
-	klog.V(util.DebugLogLvl).Info("building claim controller manager")
+	logD.Info("building claim controller manager")
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		WithEventFilter(skipUpdate).
@@ -139,5 +147,4 @@ func init() {
 	})
 
 	klog.Infoln("Logging initialized")
-	klog.V(util.DebugLogLvl).Infoln("DEBUG LOGS ENABLED")
 }
