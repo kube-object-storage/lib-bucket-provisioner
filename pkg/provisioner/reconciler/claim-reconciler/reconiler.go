@@ -77,8 +77,8 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner ap
 func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 
 	// Generate new loggers each request for descriptive messages
-	r.logD = klogr.New().WithName("reconcil-request/" + request.String()).V(util.DebugLogLvl)
-	r.logI = klogr.New().WithName("reconcile-request/" + request.String())
+	r.logD = klogr.New().WithName(util.DomainPrefix+"/reconciler").WithValues("req", request.String()).V(util.DebugLogLvl)
+	r.logI = klogr.New().WithName(util.DomainPrefix+"/reconciler").WithValues("req", request.String())
 
 	r.logD.Info("Reconcile()")
 
