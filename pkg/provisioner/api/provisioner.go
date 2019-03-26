@@ -17,6 +17,8 @@ type Provisioner interface {
 	Delete(ob *v1alpha1.ObjectBucket) error
 }
 
+// BucketOptions wraps all pertinent data that the Provisioner requires to create a
+// bucket and the Reconciler requires to abstract that bucket in kubernetes
 type BucketOptions struct {
 	// ReclaimPolicy is the reclaimPolicy of the OBC's storage class
 	ReclaimPolicy *corev1.PersistentVolumeReclaimPolicy
