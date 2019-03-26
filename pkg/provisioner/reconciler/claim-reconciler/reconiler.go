@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
+	"k8s.io/klog/klogr"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog"
@@ -27,6 +30,8 @@ type objectBucketClaimReconciler struct {
 	retryInterval   time.Duration
 	retryTimeout    time.Duration
 	retryBackoff    int
+	logD            logr.InfoLogger
+	logI            logr.InfoLogger
 }
 
 var _ reconcile.Reconciler = &objectBucketClaimReconciler{}
@@ -38,18 +43,23 @@ type Options struct {
 }
 
 func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner api.Provisioner, options Options) *objectBucketClaimReconciler {
+	locallogD := klogr.New().WithName(util.DomainPrefix + "/reconciler/" + name).V(util.DebugLogLvl)
+	locallogI := klogr.New().WithName(util.DomainPrefix + "/reconciler/" + name)
+
+	locallogI.Info("constructing new reconciler", "provisioner", name)
+
 	if options.RetryInterval < util.DefaultRetryBaseInterval {
 		options.RetryInterval = util.DefaultRetryBaseInterval
 	}
-	klog.V(util.DebugLogLvl).Infof("Retry base interval == %s", options.RetryInterval)
+	locallogD.Info("retry loop setting", "RetryBaseInterval", options.RetryInterval)
 	if options.RetryTimeout < util.DefaultRetryTimeout {
 		options.RetryTimeout = util.DefaultRetryTimeout
 	}
-	klog.V(util.DebugLogLvl).Infof("Retry timeout == %s", options.RetryTimeout)
+	locallogD.Info("retry loop setting", "RetryTimeout", options.RetryTimeout)
 	if options.RetryBackoff < util.DefaultRetryBackOff {
 		options.RetryBackoff = util.DefaultRetryBackOff
 	}
-	klog.V(util.DebugLogLvl).Infof("Retry backoff == %d", options.RetryBackoff)
+	locallogD.Info("retry loop setting", "RetryBackOff", options.RetryBackoff)
 	return &objectBucketClaimReconciler{
 		ctx:             context.Background(),
 		client:          c,
@@ -66,7 +76,14 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner ap
 // extremely fragile.
 func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 
+	// Generate new loggers each request for descriptive messages
+	r.logD = klogr.New().WithName(util.DomainPrefix+"/reconciler").WithValues("req", request.String()).V(util.DebugLogLvl)
+	r.logI = klogr.New().WithName(util.DomainPrefix+"/reconciler").WithValues("req", request.String())
+
+	r.logD.Info("reconciling request")
+
 	handleErr := func(format string, a ...interface{}) (reconcile.Result, error) {
+		r.logD.Info("error:", "msg", fmt.Sprintf(format, a...))
 		return reconcile.Result{}, fmt.Errorf(format, a...)
 	}
 
@@ -74,15 +91,13 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	// TODO    CAUTION! UNDER CONSTRUCTION!
 	// ///   ///   ///   ///   ///   ///   ///
 
-	klog.V(util.DebugLogLvl).Infof("reconciling object %s", request.NamespacedName)
-
 	obc, err := r.claimFromKey(request.NamespacedName)
 	if err != nil {
-		return handleErr("error getting claim for key %s: %v", err)
+		return handleErr("error getting claim for key: %v", err)
 	}
 
 	if !r.shouldProvision(obc) {
-		return handleErr("skipping provisioning for claim %s", obc.Name)
+		return handleErr("skipping provisioning for claim")
 	}
 
 	bucketName, err := util.GenerateBucketName(obc)
@@ -105,7 +120,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 	err = r.handelReconcile(options)
 	if err != nil {
-		return handleErr("failed Provisioning bucket %q for claim \"%s/%s\": %v", options.BucketName, obc.Namespace, obc.Name, err)
+		return handleErr("failed provisioning bucket %q : %v", options.BucketName, err)
 	}
 
 	return reconcile.Result{}, nil
@@ -118,6 +133,8 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 	// ///   ///   ///   ///   ///   ///   ///
 	// TODO    CAUTION! UNDER CONSTRUCTION!
 	// ///   ///   ///   ///   ///   ///   ///
+
+	r.logD.Info("handleReconcile()")
 
 	if options == nil {
 		return fmt.Errorf("error reconciling obj, got nil BucketOptions")
@@ -135,7 +152,9 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 	// so we can start fresh in the next iteration
 	defer func() {
 		if err != nil {
+			r.logI.Info("performing cleanup")
 			if !pErr.IsBucketExists(err) && ob != nil {
+				r.logD.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
 				if err := r.provisioner.Delete(ob); err != nil {
 					klog.Infof("error deleting bucket: %v", err)
 				}
@@ -144,7 +163,7 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		}
 	}()
 
-	klog.V(util.DebugLogLvl).Infof("Provisioning bucket %q", options.BucketName)
+	r.logD.Info("provisioning", "bucket", options.BucketName)
 	connection, err = r.provisioner.Provision(options)
 	if err != nil {
 		return fmt.Errorf("error provisioning bucket: %v", err)
@@ -152,35 +171,35 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		return fmt.Errorf("error provisioning bucket.  got nil connection")
 	}
 
-	klog.V(util.DebugLogLvl).Infof("generating new object bucket for claim %s/%s", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name)
+	r.logD.Info("composing ObjectBucket")
 	ob, err = util.NewObjectBucket(options.ObjectBucketClaim, connection)
 	if err != nil {
 		return fmt.Errorf("error composing object bucket: %v", err)
 	}
 
-	klog.V(util.DebugLogLvl).Infof("creating object bucket")
+	r.logD.Info("creating ObjectBucket", "name", ob.Name)
 	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
 		return fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 
-	klog.V(util.DebugLogLvl).Infof("generating new secret for ObjectBucketClaim %s/%s", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name)
+	r.logD.Info("composing Secret")
 	secret, err = util.NewCredentialsSecret(options.ObjectBucketClaim, connection.Authentication)
 	if err != nil {
 		return fmt.Errorf("error composing secret: %v", err)
 	}
 
-	klog.V(util.DebugLogLvl).Infof("creating secret %s/%s", secret.Namespace, secret.Name)
+	r.logD.Info("creating Secret", "namespace", secret.Namespace, "name", secret.Name)
 	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
 		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 
-	klog.V(util.DebugLogLvl).Infof("generating new configMap for ObjectBucketClaim %s/%s", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name)
+	r.logD.Info("composing ConfigMap")
 	configMap, err = util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
 	if err != nil {
 		return fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
 	}
 
-	klog.V(util.DebugLogLvl).Infof("creating configMap %s/%s", configMap.Namespace, configMap.Name)
+	r.logD.Info("creating Configmap", "namespace", configMap.Namespace, "name", configMap.Name)
 	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
 		return fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
 	}
@@ -198,6 +217,7 @@ func (r *objectBucketClaimReconciler) shouldProvision(obc *v1alpha1.ObjectBucket
 		return false
 	}
 	if class.Provisioner != r.provisionerName {
+		r.logI.Info("claim provisioner does not match expected provisioner", "claim provisioner", class.Provisioner, "should match", r.provisionerName)
 		return false
 	}
 	return true
@@ -214,37 +234,41 @@ func (r *objectBucketClaimReconciler) claimFromKey(key client.ObjectKey) (*v1alp
 }
 
 func (r *objectBucketClaimReconciler) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
-	deleteObjectBucket(ob, r)
-	deleteSecret(s, r)
-	deleteConfigMap(cm, r)
+	r.deleteObjectBucket(ob)
+	r.deleteSecret(s)
+	r.deleteConfigMap(cm)
 }
 
 func (r *objectBucketClaimReconciler) deleteBucket(ob *v1alpha1.ObjectBucket) {
 	if ob != nil {
+		r.logD.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
 		if err := r.provisioner.Delete(ob); err != nil {
 			klog.Errorf("error deleting object store bucket %v: %v", ob.Spec.Endpoint.BucketName, err)
 		}
 	}
 }
 
-func deleteConfigMap(cm *corev1.ConfigMap, r *objectBucketClaimReconciler) {
+func (r *objectBucketClaimReconciler) deleteConfigMap(cm *corev1.ConfigMap) {
 	if cm != nil {
+		r.logD.Info("deleting ConfigMap", "name", cm.Name)
 		if err := r.client.Delete(context.Background(), cm); err != nil && errors.IsNotFound(err) {
 			klog.Errorf("Error deleting ConfigMap %v: %v", cm.Name, err)
 		}
 	}
 }
 
-func deleteSecret(s *corev1.Secret, r *objectBucketClaimReconciler) {
+func (r *objectBucketClaimReconciler) deleteSecret(s *corev1.Secret) {
 	if s != nil {
+		r.logD.Info("deleting Secret", "name", s.Name)
 		if err := r.client.Delete(context.Background(), s); err != nil && errors.IsNotFound(err) {
 			klog.Errorf("Error deleting Secret %v: %v", s.Name, err)
 		}
 	}
 }
 
-func deleteObjectBucket(ob *v1alpha1.ObjectBucket, r *objectBucketClaimReconciler) {
+func (r *objectBucketClaimReconciler) deleteObjectBucket(ob *v1alpha1.ObjectBucket) {
 	if ob != nil {
+		r.logD.Info("deleting ObjectBucket", "name", ob.Name)
 		if err := r.client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
 			klog.Errorf("Error deleting ObjectBucket %v: %v", ob.Name, err)
 		}

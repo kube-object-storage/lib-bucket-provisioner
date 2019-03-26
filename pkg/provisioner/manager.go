@@ -4,8 +4,11 @@ import (
 	"flag"
 	"time"
 
+	"github.com/go-logr/logr"
+
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
+	"k8s.io/klog/klogr"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -39,7 +42,17 @@ type ProvisionerOptions struct {
 
 	// ProvisionRetryBackoff the base interval multiplier, applied each iteration
 	ProvisionRetryBackoff int
+
+	// The namespace to which the provisioner is restricted.  Empty assumes all namespaces
+	Namespace string
 }
+
+var (
+	// logI is a regular info logger
+	logI logr.InfoLogger
+	// logD is a debug leveled logger
+	logD logr.InfoLogger
+)
 
 // NewProvisioner should be called by importers of this library to
 // instantiate a new provisioning controller. This controller will
@@ -52,7 +65,12 @@ func NewProvisioner(
 	options *ProvisionerOptions,
 ) *ProvisionerController {
 
-	klog.V(2).Infof("constructing new provisioner: %s", provisionerName)
+	initFlags()
+
+	logI = klogr.New().WithName(util.DomainPrefix)
+	logD = klogr.New().WithName(util.DomainPrefix).V(util.DebugLogLvl)
+
+	logI.Info("new provisioner", "name", provisionerName)
 
 	var err error
 	ctrl := &ProvisionerController{
@@ -65,16 +83,18 @@ func NewProvisioner(
 	//  This is especially interesting for ObjectBuckets should we decide they should sync with the underlying bucket.
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
-	klog.V(util.DebugLogLvl).Infof("generating controller manager")
-	ctrl.Manager, err = manager.New(cfg, manager.Options{})
+	logD.Info("generating controller manager")
+	ctrl.Manager, err = manager.New(cfg, manager.Options{Namespace: options.Namespace})
 	if err != nil {
 		klog.Fatalf("error creating controller manager: %v", err)
 	}
 
+	logD.Info("adding schemes to manager")
 	if err = apis.AddToScheme(ctrl.Manager.GetScheme()); err != nil {
 		klog.Fatalf("error adding api resources to scheme")
 	}
 
+	logD.Info("getting manager client")
 	client := ctrl.Manager.GetClient()
 	if err != nil {
 		klog.Fatalf("error generating new client: %v", err)
@@ -82,25 +102,26 @@ func NewProvisioner(
 
 	skipUpdate := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Create kind(%v) key(%s)", createEvent.Object.GetObjectKind().GroupVersionKind(), createEvent.Meta.GetName())
+			logD.Info("event: Create() ", "Kind", createEvent.Object.GetObjectKind().GroupVersionKind(), "Name", createEvent.Meta.GetName())
 			return true
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Update (ignored) kind(%s) key(%s)", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), updateEvent.MetaNew.GetName())
+			logD.Info("event: Update (ignored)", "Kind", updateEvent.ObjectNew.GetObjectKind().GroupVersionKind().String(), "Name", updateEvent.MetaNew.GetName())
 			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			klog.V(util.DebugLogLvl).Infof("event: Delete (ignored) kind(%v) key(%s)", deleteEvent.Object.GetObjectKind().GroupVersionKind(), deleteEvent.Meta.GetName())
+			logD.Info("event: Delete() (ignored)", "Kind", deleteEvent.Object.GetObjectKind().GroupVersionKind(), "Name", deleteEvent.Meta.GetName())
 			return true
 		},
 		GenericFunc: func(genericEvent event.GenericEvent) bool {
+			logD.Info("event: Generic() (ignored)", "Kind", genericEvent.Object.GetObjectKind().GroupVersionKind(), "Name", genericEvent.Meta.GetName())
 			return false
 		},
 	}
 
 	// Init ObjectBucketClaim controller.
 	// Events for child ConfigMaps and Secrets trigger Reconcile of parent ObjectBucketClaim
-	klog.V(util.DebugLogLvl).Info("building claim controller manager")
+	logI.Info("building controller manager")
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		WithEventFilter(skipUpdate).
@@ -118,15 +139,11 @@ func NewProvisioner(
 // Run starts the claim and bucket controllers.
 func (p *ProvisionerController) Run() {
 	defer klog.Flush()
-	klog.Infof("Starting controller for %s provisioner", p.Name)
+	logI.Info("Starting manager", "provisioner", p.Name)
 	go p.Manager.Start(signals.SetupSignalHandler())
 }
 
-func init() {
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-
+func initFlags() {
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
 
@@ -137,7 +154,7 @@ func init() {
 			kflag.Value.Set(val)
 		}
 	})
-
-	klog.Infoln("Logging initialized")
-	klog.V(util.DebugLogLvl).Infoln("DEBUG LOGS ENABLED")
+	if !flag.Parsed() {
+		flag.Parse()
+	}
 }
