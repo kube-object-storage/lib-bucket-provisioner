@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"k8s.io/kubernetes/pkg/api/ref"
 	"path"
 	"strconv"
 	"strings"
@@ -138,6 +139,7 @@ func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Conne
 	if obc == nil || connection == nil {
 		return nil, fmt.Errorf("obc and connection required")
 	}
+
 	return &v1alpha1.ObjectBucket{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: fmt.Sprintf(ObjectBucketFormat, obc.Namespace, obc.Name),
@@ -186,4 +188,8 @@ func generateBucketName(prefix string) string {
 		prefix = prefix[:maxBaseNameLen-1]
 	}
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
+}
+
+func RefFromClaim(obc *v1alpha1.ObjectBucketClaim) *v1.ObjectReference {
+	return v1.ObjectReference{}
 }

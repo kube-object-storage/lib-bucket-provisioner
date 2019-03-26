@@ -2,6 +2,7 @@ package provisioner
 
 import (
 	"flag"
+	"k8s.io/apimachinery/pkg/runtime"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -110,7 +111,7 @@ func NewProvisioner(
 			return false
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			logD.Info("event: Delete() (ignored)", "Kind", deleteEvent.Object.GetObjectKind().GroupVersionKind(), "Name", deleteEvent.Meta.GetName())
+			logD.Info("event: Delete()", "Kind", deleteEvent.Object.GetObjectKind().GroupVersionKind(), "Name", deleteEvent.Meta.GetName())
 			return true
 		},
 		GenericFunc: func(genericEvent event.GenericEvent) bool {
@@ -125,7 +126,7 @@ func NewProvisioner(
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		WithEventFilter(skipUpdate).
-		Complete(claimReconciler.NewObjectBucketClaimReconciler(client, provisionerName, provisioner, claimReconciler.Options{
+		Complete(claimReconciler.NewObjectBucketClaimReconciler(client, ctrl.Manager.GetScheme(), provisionerName, provisioner, claimReconciler.Options{
 			RetryInterval: options.ProvisionBaseInterval,
 			RetryBackoff:  options.ProvisionRetryBackoff,
 			RetryTimeout:  options.ProvisionRetryTimeout,

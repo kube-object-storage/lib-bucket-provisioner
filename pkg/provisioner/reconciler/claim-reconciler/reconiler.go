@@ -3,6 +3,7 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 	"strings"
 	"time"
 
@@ -23,15 +24,19 @@ import (
 )
 
 type objectBucketClaimReconciler struct {
-	ctx             context.Context
-	client          client.Client
+	ctx    context.Context
+	client client.Client
+	scheme *runtime.Scheme
+
 	provisionerName string
 	provisioner     api.Provisioner
-	retryInterval   time.Duration
-	retryTimeout    time.Duration
-	retryBackoff    int
-	logD            logr.InfoLogger
-	logI            logr.InfoLogger
+
+	retryInterval time.Duration
+	retryTimeout  time.Duration
+	retryBackoff  int
+
+	logD logr.InfoLogger
+	logI logr.InfoLogger
 }
 
 var _ reconcile.Reconciler = &objectBucketClaimReconciler{}
@@ -42,7 +47,7 @@ type Options struct {
 	RetryBackoff  int
 }
 
-func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner api.Provisioner, options Options) *objectBucketClaimReconciler {
+func NewObjectBucketClaimReconciler(c client.Client, scheme *runtime.Scheme, name string, provisioner api.Provisioner, options Options) *objectBucketClaimReconciler {
 	locallogD := klogr.New().WithName(util.DomainPrefix + "/reconciler/" + name).V(util.DebugLogLvl)
 	locallogI := klogr.New().WithName(util.DomainPrefix + "/reconciler/" + name)
 
@@ -63,6 +68,7 @@ func NewObjectBucketClaimReconciler(c client.Client, name string, provisioner ap
 	return &objectBucketClaimReconciler{
 		ctx:             context.Background(),
 		client:          c,
+		scheme:          scheme,
 		provisionerName: strings.ToLower(name),
 		provisioner:     provisioner,
 		retryInterval:   options.RetryInterval,
@@ -92,7 +98,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	// ///   ///   ///   ///   ///   ///   ///
 
 	obc, err := r.claimFromKey(request.NamespacedName)
-	if err != nil {
+	if err != nil && !errors.IsNotFound(err) {
 		return handleErr("error getting claim for key: %v", err)
 	}
 
@@ -171,40 +177,58 @@ func (r *objectBucketClaimReconciler) handelReconcile(options *api.BucketOptions
 		return fmt.Errorf("error provisioning bucket.  got nil connection")
 	}
 
-	r.logD.Info("composing ObjectBucket")
-	ob, err = util.NewObjectBucket(options.ObjectBucketClaim, connection)
-	if err != nil {
-		return fmt.Errorf("error composing object bucket: %v", err)
+	if ob, err = r.createObjectBucket(options, connection); err != nil {
+		return fmt.Errorf("error reconciling: %v", err)
 	}
 
-	r.logD.Info("creating ObjectBucket", "name", ob.Name)
-	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
-		return fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
+	if secret, err = r.createSecret(options, connection); err != nil {
+		return fmt.Errorf("error reconciling: %v", err)
 	}
 
-	r.logD.Info("composing Secret")
-	secret, err = util.NewCredentialsSecret(options.ObjectBucketClaim, connection.Authentication)
-	if err != nil {
-		return fmt.Errorf("error composing secret: %v", err)
-	}
-
-	r.logD.Info("creating Secret", "namespace", secret.Namespace, "name", secret.Name)
-	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
-		return fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
-	}
-
-	r.logD.Info("composing ConfigMap")
-	configMap, err = util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
-	if err != nil {
-		return fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
-	}
-
-	r.logD.Info("creating Configmap", "namespace", configMap.Namespace, "name", configMap.Name)
-	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
-		return fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
+	if configMap, err = r.createConfigMap(options, connection); err != nil {
+		return fmt.Errorf("error reconciling: %v", err)
 	}
 
 	return nil
+}
+
+func (r *objectBucketClaimReconciler) createObjectBucket(options *api.BucketOptions, connection *v1alpha1.Connection) (*v1alpha1.ObjectBucket, error) {
+	r.logD.Info("composing ObjectBucket")
+	ob, err := util.NewObjectBucket(options.ObjectBucketClaim, connection)
+	if err != nil {
+		return nil, fmt.Errorf("error composing object bucket: %v", err)
+	}
+	r.logD.Info("creating ObjectBucket", "name", ob.Name)
+	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
+		return nil, fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
+	}
+	return ob, nil
+}
+
+func (r *objectBucketClaimReconciler) createSecret(options *api.BucketOptions, connection *v1alpha1.Connection) (*corev1.Secret, error) {
+	r.logD.Info("composing Secret")
+	secret, err := util.NewCredentialsSecret(options.ObjectBucketClaim, connection.Authentication)
+	if err != nil {
+		return nil, fmt.Errorf("error composing secret: %v", err)
+	}
+	r.logD.Info("creating Secret", "namespace", secret.Namespace, "name", secret.Name)
+	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
+		return nil, fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
+	}
+	return secret, nil
+}
+
+func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions, connection *v1alpha1.Connection) (*corev1.ConfigMap, error) {
+	r.logD.Info("composing ConfigMap")
+	configMap, err := util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
+	if err != nil {
+		return nil, fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
+	}
+	r.logD.Info("creating Configmap", "namespace", configMap.Namespace, "name", configMap.Name)
+	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
+		return nil, fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
+	}
+	return configMap, nil
 }
 
 // shouldProvision is a simplistic check on whether this obc is a concern for this provisioner.
@@ -227,8 +251,9 @@ func (r *objectBucketClaimReconciler) claimFromKey(key client.ObjectKey) (*v1alp
 	obc := &v1alpha1.ObjectBucketClaim{}
 	if err := r.client.Get(r.ctx, key, obc); err != nil {
 		if errors.IsNotFound(err) {
-			return nil, fmt.Errorf("object for key %s does not exist. it may have been deleted before reonciliation started", key)
+			return nil, err
 		}
+		return nil, fmt.Errorf("error getting claim: %v", err)
 	}
 	return obc, nil
 }
