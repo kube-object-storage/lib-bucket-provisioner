@@ -63,10 +63,10 @@ Additionally, the same cluster can have a rook-ceph RGW provisioner running whic
 Like the S3 proivisioner, it only handles OBCs that it knows how to provision and skips the rest.
 In this proposal, the bucket provisioners will be simple-to-write binaries because the bucket provisioning lib
 handles the bulk of the work.
-Each provisioner is only responsible for writing `Provision()` and `Delete()`functions and a short `main()` function.
+Each provisioner is responsible for writing `Provision()`, `Delete()` and `Suspend()` methods and a short `main()` function.
 
-The `Provision()` and `Delete()`functions are interfaces defined in the bucket library.
-To provision a bucket, all provisioners are required to return an OB struct (which is used to construct the ConfigMap) and the bucket credentials (which are used to create the Secret).
+`Provision()`,  `Delete()` and `Suspend()` are interfaces defined in the bucket library.
+To provision a bucket, all provisioners are required to return a _Connection_ struct which is used to construct the ConfigMap and the Secret.
 The Secret and ConfigMap have deterministic names, namespaces, and property keys.
 An app pod consuming a bucket need only be aware of the Secret name and keys, and the ConfigMap name and fields.
 The app pod will not run until the bucket has been provisioned and can be accessed.
@@ -102,13 +102,12 @@ Bucket binding requires these steps before the bucket is accessible to an app po
 `Bound` indicates that a bucket and all related artifacts have been created on behalf of the OBC. Once a bucket claim is bound the app pod can run, meaning the Secret (containing access credentials) and the ConfigMap (containing the bucket endpoint) are mounted and consumable by the pod.
 
 ### Bucket Deletion
-When an OBC is deleted the provisioner's`Delete()` method is always called regardless of the OB's _reclaimPolicy_.
-This differs from the Kubernetes external lib implementation which only invokes `Delete()` when the _reclaimPolicy_ == "Delete".
-The reason to always call `Delete()`is so that provisioners can perform any bucket cleanup, even when the storage class dictates that the underlying bucket should be retained.
-For example, ACLs and related user cleanup could be done if desired by the provisioner.
-But it also places an extra burden on provisioners to support the _reclaimPolicy_ (resides in the OB).
+When an OBC is deleted the provisioner's `Delete()` or `Suspend` methods will be called depending on the OB's _reclaimPolicy_.
+If the reclaim policy is "delete" then the provisioner's `Delete()` method is called and the bucket is expected to be physically removed.
+If the reclaim policy is "retain" then the provisioner's `Suspend()` method is called and the bucket is expected to not be physically removed.
+However, object store specific clean up such as deleting bucket credentials, detach, archive, etc. can be performed depending on the needs of the object store.
 
-The bucket library always attempts to delete all generated artifacts upon an OBC delete.
+When the OBC is deleted the library attempts to delete _all_ generated artifacts.
 The implementation of Kubernetes _informers_ recognizes that sometimes Delete events are missed.
 Controllers, therefore, need to be robust enough to infer deletes via other mechanisms, such as Status.
 For example, an OBC can be deleted from the cluster, but the delete event is missed and thus the controller doesn't know the delete occurred.
@@ -116,8 +115,13 @@ In this scenario, the associated OB (and possibly the Secret and/or ConfigMap) r
 
 #### Orphaned Object Buckets (post phase-0)
 An orphaned OB is an OB with no matching OBC, and thus the state of the cluster is inconsistent.
+
+**Note:** this is a greenfield definition and may change when brownfield buckets are supported.
+
 The solution is to delete orphaned OBs, but how are they detected since OBC watches are triggered by OBC events and there are no "events" associated with orphaned OBs.
-The solution is to run a centralized, provisioner-agnostic OB controller that watches all OBs, and detects and deletes orphans.
+A solution is to run a centralized, provisioner-agnostic OB controller that watches all OBs, and detects and deletes orphans.
+
+**Note:** this section is subject to change as we consider brownfield bucket implementation details.
 
 There will be only one OB controller running per cluster, not the N controllers needed to support N bucket provisioners.
 There is still no event to trigger the detection of orphaned OBs, so a reasonably short sync period will cause the OB controller to re-fetch all OBs and look for orphans.
@@ -170,7 +174,8 @@ The OBC watch performs the following:
   + sync the OB's status to match the OBC's status
 + detects OBC delete events:
   + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
-  + invoke the `Delete()` method for the provisioner defined in the OBC's storage class
+  + invoke the `Delete()` method when the reclaim policy is "delete"
+  + invoke the `Suspend()` method when the reclaim policy is "retain"
   + delete the related Secret, ConfigMap and the OB (in that order)
 
 #### OB Watches (post phase-0)
@@ -417,8 +422,8 @@ spec:
 ```
 
 ### Interfaces
-#### Provision() and Delete()
-The bucket provisioning library defines two interfaces which all provsioners must support.
+#### Provision(), Delete(), Suspend()
+The bucket provisioning library defines three interfaces which all provsioners must support.
 ```golang
 // Provisioner the interface to be implemented by users of this
 // library and executed by the Reconciler
@@ -429,6 +434,9 @@ type Provisioner interface {
 	// Delete should be implemented to handle bucket deletion
 	// for the target object store
 	Delete(claim *v1alpha1.ObjectBucketClaim) error
+	// Suspend should be implemented to handle bucket cleanup
+	// for the target object store
+	Suspend(claim *v1alpha1.ObjectBucketClaim) error
 }
 ```
 ##### ObjectBucketOptions
