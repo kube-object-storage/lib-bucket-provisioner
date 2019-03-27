@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,6 +39,9 @@ type ObjectBucketClaimSpec struct {
 	// AdditionalConfig gives providers a location to set
 	// proprietary config values (tenant, namespace, etc)
 	AdditionalConfig map[string]string `json:"additionalConfig"`
+	// ObjectBucketName is the name of the object bucket resource.  This is the authoritative
+	// determintaion for binding.
+	ObjectBucketName string
 }
 
 type ObjectBucketClaimStatusPhase string
@@ -53,8 +55,7 @@ const (
 
 // ObjectBucketClaimStatus defines the observed state of ObjectBucketClaim
 type ObjectBucketClaimStatus struct {
-	Phase           ObjectBucketClaimStatusPhase
-	ObjectBucketRef *v1.ObjectReference
+	Phase ObjectBucketClaimStatusPhase
 }
 
 // +genclient

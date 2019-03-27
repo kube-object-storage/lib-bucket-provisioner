@@ -3,20 +3,22 @@ package util
 import (
 	"context"
 	"fmt"
-	"k8s.io/klog"
 	"path"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/reference"
 
-	"k8s.io/api/core/v1"
+	"k8s.io/klog"
+
+	"github.com/google/uuid"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,7 +29,11 @@ import (
 const (
 	DefaultRetryBaseInterval = time.Second * 10
 	DefaultRetryTimeout      = time.Second * 360
-	DefaultRetryBackOff      = 1
+
+	DebugInfoLvl = iota
+	DebugLogLvl
+
+	DomainPrefix = "objectbucket.io"
 
 	BucketName      = "BUCKET_NAME"
 	BucketHost      = "BUCKET_HOST"
@@ -36,68 +42,22 @@ const (
 	BucketSubRegion = "BUCKET_SUBREGION"
 	BucketURL       = "BUCKET_URL"
 	BucketSSL       = "BUCKET_SSL"
-
-	DebugLogLvl = 2
-
-	DomainPrefix = "objectbucket.io"
-	Finalizer    = DomainPrefix + "/finalizer"
+	Finalizer       = DomainPrefix + "/finalizer"
 )
-
-func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, client client.Client, ctx context.Context) (*storagev1.StorageClass, error) {
-
-	if obc == nil {
-		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
-	}
-	if obc.Spec.StorageClassName == "" {
-		return nil, fmt.Errorf("no StorageClass defined for ObjectBucketClaim \"%s/%s\"", obc.Namespace, obc.Name)
-	}
-
-	class := &storagev1.StorageClass{}
-	err := client.Get(
-		ctx,
-		types.NamespacedName{
-			Namespace: "",
-			Name:      obc.Spec.StorageClassName,
-		},
-		class)
-	if err != nil {
-		return nil, fmt.Errorf("error getting storage class %q: %v", obc.Spec.StorageClassName, err)
-	}
-	return class, nil
-}
-
-// NewCredentailsSecret returns a secret with data appropriate to the supported authenticaion method.
-// Even if the values for the Authentication keys are empty, we generate the secret.
-func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*v1.Secret, error) {
-
-	if obc == nil {
-		return nil, fmt.Errorf("ObjectBucketClaim required to generate secret")
-	}
-	if auth == nil {
-		return nil, fmt.Errorf("got nil authentication, nothing to do")
-	}
-
-	secret := &v1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       obc.Name,
-			Namespace:  obc.Namespace,
-			Finalizers: []string{Finalizer},
-		},
-	}
-
-	secret.StringData = auth.ToMap()
-	return secret, nil
-}
 
 // NewBucketConfigMap constructs a config map from a given endpoint and ObjectBucketClaim
 // As a quality of life addition, it constructs a full URL for the bucket path.
 // Success is constrained by a defined Bucket name and Bucket host.
-func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*v1.ConfigMap, error) {
-	if err := validEndpoint(ep); err != nil {
-		return nil, fmt.Errorf("error composing configMap: %v", err)
+func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*corev1.ConfigMap, error) {
+
+	if ep == nil {
+		return nil, fmt.Errorf("cannot construct ConfigMap, got nil Endpoint")
+	}
+	if obc == nil {
+		return nil, fmt.Errorf("cannot construct ConfigMap, got nil OBC")
 	}
 
-	return &v1.ConfigMap{
+	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       obc.Name,
 			Namespace:  obc.Namespace,
@@ -115,7 +75,60 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 	}, nil
 }
 
-func validEndpoint(ep *v1alpha1.Endpoint) error {
+func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection, client client.Client, ctx context.Context, scheme *runtime.Scheme) (*v1alpha1.ObjectBucket, error) {
+
+	claimRef, err := reference.GetReference(scheme, obc)
+	if err != nil {
+		return nil, fmt.Errorf("could not get object ref: %v", err)
+	}
+
+	class := &storagev1.StorageClass{}
+	err = client.Get(ctx, types.NamespacedName{Name: obc.Spec.StorageClassName}, class)
+	if err != nil {
+		return nil, fmt.Errorf("could not get storage class: %v", err)
+	}
+
+	return &v1alpha1.ObjectBucket{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf(ObjectBucketFormat, obc.Namespace, obc.Name),
+		},
+		Spec: v1alpha1.ObjectBucketSpec{
+			StorageClassName: obc.Spec.StorageClassName,
+			ReclaimPolicy:    class.ReclaimPolicy,
+			ClaimRef:         claimRef,
+			Connection:       connection,
+		},
+		// TODO probably need to prepopulate some prebinding, etc
+		Status: v1alpha1.ObjectBucketStatus{
+			Phase: v1alpha1.ObjectBucketClaimStatusPhaseBound,
+		},
+	}, nil
+}
+
+// NewCredentailsSecret returns a secret with data appropriate to the supported authenticaion method.
+// Even if the values for the Authentication keys are empty, we generate the secret.
+func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*corev1.Secret, error) {
+
+	if obc == nil {
+		return nil, fmt.Errorf("ObjectBucketClaim required to generate secret")
+	}
+	if auth == nil {
+		return nil, fmt.Errorf("got nil authentication, nothing to do")
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       obc.Name,
+			Namespace:  obc.Namespace,
+			Finalizers: []string{Finalizer},
+		},
+	}
+
+	secret.StringData = auth.ToMap()
+	return secret, nil
+}
+
+func ValidEndpoint(ep *v1alpha1.Endpoint) error {
 	if ep == nil {
 		return fmt.Errorf("v1alpha1.Endpoint and v1alpha1.ObjectbucketClaim cannot be nil")
 	}
@@ -134,23 +147,6 @@ func validEndpoint(ep *v1alpha1.Endpoint) error {
 }
 
 const ObjectBucketFormat = "obc-%s-%s"
-
-func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection) (*v1alpha1.ObjectBucket, error) {
-	if obc == nil || connection == nil {
-		return nil, fmt.Errorf("obc and connection required")
-	}
-
-	return &v1alpha1.ObjectBucket{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf(ObjectBucketFormat, obc.Namespace, obc.Name),
-		},
-		Spec: v1alpha1.ObjectBucketSpec{
-			Connection: connection,
-		},
-		// TODO probably need to prepopulate some prebinding, etc
-		Status: v1alpha1.ObjectBucketStatus{},
-	}, nil
-}
 
 func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client, interval, timeout time.Duration) error {
 
@@ -179,7 +175,8 @@ const (
 	maxBaseNameLen = maxNameLen - uuidSuffixLen
 )
 
-func GenerateBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
+func ComposeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
+	// XOR BucketName and GenerateBucketName
 	if (obc.Spec.BucketName == "") == (obc.Spec.GeneratBucketName == "") {
 		return "", fmt.Errorf("expected either bucketName or generateBucketName defined")
 	}
@@ -195,4 +192,45 @@ func generateBucketName(prefix string) string {
 		prefix = prefix[:maxBaseNameLen-1]
 	}
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
+}
+
+func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, client client.Client, ctx context.Context) (*storagev1.StorageClass, error) {
+
+	if obc == nil {
+		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
+	}
+	if obc.Spec.StorageClassName == "" {
+		return nil, fmt.Errorf("no StorageClass defined for ObjectBucketClaim \"%s/%s\"", obc.Namespace, obc.Name)
+	}
+
+	class := &storagev1.StorageClass{}
+	err := client.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: "",
+			Name:      obc.Spec.StorageClassName,
+		},
+		class)
+	if err != nil {
+		return nil, fmt.Errorf("error getting storage class %q: %v", obc.Spec.StorageClassName, err)
+	}
+	return class, nil
+}
+
+func HasFinalizer(meta metav1.ObjectMeta) bool {
+	for _, f := range meta.GetFinalizers() {
+		if f == Finalizer {
+			return true
+		}
+	}
+	return false
+}
+
+func RemoveFinalizer(meta *metav1.ObjectMeta) {
+	for i, f := range meta.GetFinalizers() {
+		if f == Finalizer {
+			meta.Finalizers = append(meta.Finalizers[:i], meta.Finalizers[i+1:]...)
+			break
+		}
+	}
 }
