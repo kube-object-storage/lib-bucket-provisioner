@@ -3,7 +3,6 @@ package util
 import (
 	"context"
 	"fmt"
-	"k8s.io/kubernetes/pkg/api/ref"
 	"path"
 	"strconv"
 	"strings"
@@ -188,8 +187,4 @@ func generateBucketName(prefix string) string {
 		prefix = prefix[:maxBaseNameLen-1]
 	}
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
-}
-
-func RefFromClaim(obc *v1alpha1.ObjectBucketClaim) *v1.ObjectReference {
-	return v1.ObjectReference{}
 }

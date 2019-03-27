@@ -93,6 +93,7 @@ help(){
   For example, to vet and gofmt/imports, run:
   $ ./go.sh vet imports
 '
+  printf "%s" "${msg}"
 }
 
 main(){
@@ -122,7 +123,7 @@ main(){
       preflight
       exit
       ;;
-    "help")
+    "help"|'h')
       help
       exit
       ;;
