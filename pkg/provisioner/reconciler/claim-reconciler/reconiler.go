@@ -127,7 +127,8 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 	err = r.handelReconcile(options)
 	if err != nil {
-		return handleErr("failed provisioning bucket %q : %v", options.BucketName, err)
+		klog.Error(err) // controller-runtime does not report returned errors. log them before handing them off˚
+		return reconcile.Result{}, err
 	}
 
 	return reconcile.Result{}, nil
