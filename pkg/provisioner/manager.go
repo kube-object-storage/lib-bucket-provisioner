@@ -2,7 +2,6 @@ package provisioner
 
 import (
 	"flag"
-	"k8s.io/apimachinery/pkg/runtime"
 	"time"
 
 	"github.com/go-logr/logr"
