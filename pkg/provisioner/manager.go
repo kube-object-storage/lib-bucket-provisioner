@@ -127,7 +127,6 @@ func NewProvisioner(
 		WithEventFilter(skipUpdate).
 		Complete(claimReconciler.NewObjectBucketClaimReconciler(client, ctrl.Manager.GetScheme(), provisionerName, provisioner, claimReconciler.Options{
 			RetryInterval: options.ProvisionBaseInterval,
-			RetryBackoff:  options.ProvisionRetryBackoff,
 			RetryTimeout:  options.ProvisionRetryTimeout,
 		}))
 	if err != nil {
