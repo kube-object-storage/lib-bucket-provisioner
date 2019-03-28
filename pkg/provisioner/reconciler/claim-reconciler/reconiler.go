@@ -104,7 +104,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	}
 
 	if !r.shouldProvision(obc) {
-		return handleErr("skipping provisioning for claim")
+		return reconcile.Result{}, nil // don't return errors as it triggers a re-queuing of the request
 	}
 
 	bucketName, err := util.GenerateBucketName(obc)
@@ -236,6 +236,10 @@ func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions
 // shouldProvision is a simplistic check on whether this obc is a concern for this provisioner.
 // Down the road, this will perform a broader set of checks.
 func (r *objectBucketClaimReconciler) shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
+	if obc == nil {
+		r.logI.Info("nil OBC, assuming delete event")
+		return false
+	}
 
 	class, err := util.StorageClassForClaim(obc, r.client, r.ctx)
 	if err != nil {
