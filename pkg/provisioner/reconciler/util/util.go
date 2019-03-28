@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"k8s.io/klog"
 	"path"
 	"strconv"
 	"strings"
@@ -151,15 +152,22 @@ func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Conne
 	}, nil
 }
 
-func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
+func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client, interval, timeout time.Duration) error {
 
 	if c == nil {
 		return fmt.Errorf("error creating object, nil client")
 	}
-	return wait.PollImmediate(DefaultRetryBaseInterval, DefaultRetryTimeout, func() (done bool, err error) {
+	return wait.PollImmediate(interval, timeout, func() (done bool, err error) {
 		err = c.Create(context.Background(), obj)
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return false, err
+		if err != nil {
+			if errors.IsAlreadyExists(err) {
+				// The object already exists don't spam the logs, instead let the request be requeued
+				return true, err
+			} else {
+				// The error could be intermittent, log and try again
+				klog.Error(err)
+				return false, nil
+			}
 		}
 		return true, nil
 	})

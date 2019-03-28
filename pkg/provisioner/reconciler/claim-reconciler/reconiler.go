@@ -104,7 +104,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	}
 
 	if !r.shouldProvision(obc) {
-		return handleErr("skipping provisioning for claim")
+		return reconcile.Result{}, nil // don't return errors as it triggers a re-queuing of the request
 	}
 
 	bucketName, err := util.GenerateBucketName(obc)
@@ -201,7 +201,7 @@ func (r *objectBucketClaimReconciler) createObjectBucket(options *api.BucketOpti
 		return nil, fmt.Errorf("error composing object bucket: %v", err)
 	}
 	r.logD.Info("creating ObjectBucket", "name", ob.Name)
-	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
+	if err = util.CreateUntilDefaultTimeout(ob, r.client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 	return ob, nil
@@ -214,7 +214,7 @@ func (r *objectBucketClaimReconciler) createSecret(options *api.BucketOptions, c
 		return nil, fmt.Errorf("error composing secret: %v", err)
 	}
 	r.logD.Info("creating Secret", "namespace", secret.Namespace, "name", secret.Name)
-	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
+	if err = util.CreateUntilDefaultTimeout(secret, r.client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 	return secret, nil
@@ -227,7 +227,7 @@ func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions
 		return nil, fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
 	}
 	r.logD.Info("creating Configmap", "namespace", configMap.Namespace, "name", configMap.Name)
-	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
+	if err = util.CreateUntilDefaultTimeout(configMap, r.client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
 	}
 	return configMap, nil
@@ -236,6 +236,10 @@ func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions
 // shouldProvision is a simplistic check on whether this obc is a concern for this provisioner.
 // Down the road, this will perform a broader set of checks.
 func (r *objectBucketClaimReconciler) shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
+	if obc == nil {
+		r.logI.Info("nil OBC, assuming delete event")
+		return false
+	}
 
 	class, err := util.StorageClassForClaim(obc, r.client, r.ctx)
 	if err != nil {
