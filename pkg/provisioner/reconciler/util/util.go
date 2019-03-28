@@ -217,8 +217,8 @@ func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, client client.Client,
 	return class, nil
 }
 
-func HasFinalizer(meta metav1.ObjectMeta) bool {
-	for _, f := range meta.GetFinalizers() {
+func HasFinalizer(obj metav1.Object) bool {
+	for _, f := range obj.GetFinalizers() {
 		if f == Finalizer {
 			return true
 		}
@@ -226,11 +226,28 @@ func HasFinalizer(meta metav1.ObjectMeta) bool {
 	return false
 }
 
-func RemoveFinalizer(meta *metav1.ObjectMeta) {
-	for i, f := range meta.GetFinalizers() {
-		if f == Finalizer {
-			meta.Finalizers = append(meta.Finalizers[:i], meta.Finalizers[i+1:]...)
-			break
+func RemoveFinalizer(obj metav1.Object, c client.Client, ctx context.Context) error {
+	if runObj, ok := obj.(runtime.Object); ok {
+		finalizers := obj.GetFinalizers()
+		for i, f := range finalizers {
+			if f == Finalizer {
+				obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
+				break
+			}
+		}
+		err := c.Update(ctx, runObj)
+		if err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func UpdateClaimWithBucket(obc *v1alpha1.ObjectBucketClaim, name string, c client.Client, ctx context.Context) error {
+	obc.Spec.ObjectBucketName = name
+	err := c.Update(ctx, obc)
+	if err != nil {
+		return fmt.Errorf("error adding OB name to OBC: %v", err)
+	}
+	return nil
 }

@@ -90,8 +90,11 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		// The OBC was deleted
 		if errors.IsNotFound(err) || obc.DeletionTimestamp != nil {
 			r.logI.Info("looks like the OBC was deleted")
-			r.handleDeleteClaim(request.NamespacedName)
-			return done, nil
+			err := r.handleDeleteClaim(request.NamespacedName)
+			if err != nil {
+				klog.Errorf("error deleting ObjectBucket: %v", err)
+			}
+			return done, err
 		}
 		return done, fmt.Errorf("error getting claim for request key %q", request)
 	}
@@ -138,9 +141,10 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	// so we can start fresh in the next iteration`
 	defer func() {
 		if err != nil {
-			r.logI.Info("performing cleanup")
+			klog.Errorf("errored during reconciliation: %v", err)
 			if !pErr.IsBucketExists(err) && ob != nil {
-				r.logD.Info("deleting bucket", "bucket name", ob.Spec.Endpoint.BucketName)
+				r.logI.Info("cleaning up cluster")
+				r.logI.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
 				if err := r.provisioner.Delete(ob); err != nil {
 					klog.Errorf("error deleting bucket: %v", err)
 				}
@@ -181,12 +185,15 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 
 	r.logD.Info("provisioning", "bucket", options.BucketName)
 	connection, err = r.provisioner.Provision(options)
+
 	if err != nil {
 		return fmt.Errorf("error provisioning bucket: %v", err)
 	}
+
 	if connection == nil {
 		return fmt.Errorf("error provisioning bucket.  got nil connection")
 	}
+
 	if err := util.ValidEndpoint(connection.Endpoint); err != nil {
 		return err
 	}
@@ -203,6 +210,10 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return fmt.Errorf("error reconciling: %v", err)
 	}
 
+	if err = util.UpdateClaimWithBucket(obc, ob.Name, r.client, r.ctx); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -210,6 +221,10 @@ func (r *objectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 	ob, err := r.objectBucketForClaimKey(key)
 	if err != nil {
 		return err
+	}
+	if ob == nil {
+		r.logI.Info("ob does not exist, likely due to failed provisioning, skipping")
+		return nil
 	}
 	return r.provisioner.Delete(ob)
 }
@@ -303,8 +318,11 @@ func (r *objectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectK
 	if err != nil {
 		return nil, fmt.Errorf("error listing object buckets: %v", err)
 	}
+	if len(clusterOBs.Items) == 0 {
+		r.logI.Info("no objectBuckets map to key")
+	}
 
-	var ob *v1alpha1.ObjectBucket
+	ob := &v1alpha1.ObjectBucket{}
 	for _, item := range clusterOBs.Items {
 		if item.Name == fmt.Sprintf(util.ObjectBucketFormat, key.Namespace, key.Name) {
 			item.DeepCopyInto(ob)
@@ -335,9 +353,10 @@ func (r *objectBucketClaimReconciler) deleteResources(ob *v1alpha1.ObjectBucket,
 	r.deleteConfigMap(cm)
 }
 
-func (r *objectBucketClaimReconciler) deleteBucket(ob *v1alpha1.ObjectBucket) {
+func (r *objectBucketClaimReconciler) deprovisionBucket(ob *v1alpha1.ObjectBucket) {
 	if ob != nil {
-		r.logD.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
+		r.logD.Info("deprovisioning bucket", "name", ob.Spec.Endpoint.BucketName)
+
 		if err := r.provisioner.Delete(ob); err != nil {
 			klog.Errorf("error deleting object store bucket %v: %v", ob.Spec.Endpoint.BucketName, err)
 		}
@@ -347,23 +366,45 @@ func (r *objectBucketClaimReconciler) deleteBucket(ob *v1alpha1.ObjectBucket) {
 func (r *objectBucketClaimReconciler) deleteConfigMap(cm *corev1.ConfigMap) {
 	if cm != nil {
 		r.logD.Info("deleting ConfigMap", "name", cm.Name)
-		if err := r.client.Delete(context.Background(), cm); err != nil && errors.IsNotFound(err) {
+
+		err := util.RemoveFinalizer(cm, r.client, r.ctx)
+		if err != nil {
+			klog.Errorf("error remove finalizer", "ConfigMap", fmt.Sprintf("%s/%s", cm.Namespace, cm.Name))
+			return
+		}
+
+		err = r.client.Delete(context.Background(), cm)
+		if err != nil && errors.IsNotFound(err) {
 			klog.Errorf("Error deleting ConfigMap %v: %v", cm.Name, err)
 		}
 	}
 }
 
-func (r *objectBucketClaimReconciler) deleteSecret(s *corev1.Secret) {
-	if s != nil {
-		r.logD.Info("deleting Secret", "name", s.Name)
-		if err := r.client.Delete(context.Background(), s); err != nil && errors.IsNotFound(err) {
-			klog.Errorf("Error deleting Secret %v: %v", s.Name, err)
+func (r *objectBucketClaimReconciler) deleteSecret(sec *corev1.Secret) {
+	if sec != nil {
+		r.logD.Info("deleting Secret", "name", sec.Name)
+
+		err := util.RemoveFinalizer(sec, r.client, r.ctx)
+		if err != nil {
+			klog.Errorf("error remove finalizer", "Secret", fmt.Sprintf("%s/%s", sec.Namespace, sec.Name))
+			return
+		}
+
+		if err := r.client.Delete(context.Background(), sec); err != nil && errors.IsNotFound(err) {
+			klog.Errorf("Error deleting Secret %v: %v", sec.Name, err)
 		}
 	}
 }
 
 func (r *objectBucketClaimReconciler) deleteObjectBucket(ob *v1alpha1.ObjectBucket) {
 	if ob != nil {
+
+		err := util.RemoveFinalizer(ob, r.client, r.ctx)
+		if err != nil {
+			klog.Errorf("error remove finalizer", "ObjectBucket", fmt.Sprintf("%%s", ob.Name))
+			return
+		}
+
 		r.logD.Info("deleting ObjectBucket", "name", ob.Name)
 		if err := r.client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
 			klog.Errorf("Error deleting ObjectBucket %v: %v", ob.Name, err)
