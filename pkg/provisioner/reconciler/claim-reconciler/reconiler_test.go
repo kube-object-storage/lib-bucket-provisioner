@@ -3,6 +3,7 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"k8s.io/klog/klogr"
 	"reflect"
 	"strings"
 	"testing"
@@ -40,6 +41,11 @@ var objMeta = metav1.ObjectMeta{
 	Name:      testName,
 }
 
+var (
+	testLogI = klogr.New()
+	testLogD = klogr.New().V(util.DebugLogLvl)
+)
+
 // test global provisioner fields
 type fields struct {
 	ctx             context.Context
@@ -56,9 +62,9 @@ var testFields = fields{
 	client:          nil, // generated per iteration
 	provisionerName: provisionerName,
 	provisioner:     &util.FakeProvisioner{},
-	retryInterval:   0,
-	retryTimeout:    0,
-	retryBackoff:    0,
+	retryInterval:   1,
+	retryTimeout:    1,
+	retryBackoff:    1,
 }
 
 func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient client.Client) {
@@ -86,6 +92,7 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 		name        string
 		provisioner api.Provisioner
 		options     Options
+		scheme      *runtime.Scheme
 	}
 	tests := []struct {
 		name string
@@ -142,7 +149,7 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 		tt.args.c = BuildFakeClient(t)
 
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewObjectBucketClaimReconciler(tt.args.c, tt.args.name, tt.args.provisioner, tt.args.options)
+			got := NewObjectBucketClaimReconciler(tt.args.c, tt.args.scheme, tt.args.name, tt.args.provisioner, tt.args.options)
 			if n := strings.ToLower(tt.args.name); got.provisionerName != n {
 				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() name = %v, want %v", got.provisionerName, tt.want.provisionerName)
 			}
@@ -191,7 +198,7 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:   "should fail on empty request",
+			name:   "should not requeue on empty request",
 			fields: testFields,
 			args: args{
 				request: reconcile.Request{
@@ -202,7 +209,7 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 				},
 			},
 			want:    reconcile.Result{},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name:   "should succeed for defined request",
@@ -219,7 +226,7 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:   "should fail for stale request",
+			name:   "should not requeue for stale request",
 			fields: testFields,
 			args: args{
 				request: reconcile.Request{
@@ -230,7 +237,7 @@ func Test_objectBucketClaimReconciler_Reconcile(t *testing.T) {
 				},
 			},
 			want:    reconcile.Result{},
-			wantErr: true,
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
@@ -367,6 +374,8 @@ func Test_objectBucketClaimReconciler_handelReconcile(t *testing.T) {
 				retryInterval:   tt.fields.retryInterval,
 				retryTimeout:    tt.fields.retryTimeout,
 				retryBackoff:    tt.fields.retryBackoff,
+				logI:            testLogI,
+				logD:            testLogD,
 			}
 
 			reconcileErr := r.handelReconcile(tt.args.options)
@@ -506,6 +515,8 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 				retryInterval:   tt.fields.retryInterval,
 				retryTimeout:    tt.fields.retryTimeout,
 				retryBackoff:    tt.fields.retryBackoff,
+				logI:            testLogI,
+				logD:            testLogD,
 			}
 			if got := r.shouldProvision(tt.args.obc); got != tt.want {
 				t.Errorf("objectBucketClaimReconciler.shouldProvision() = %v, want %v", got, tt.want)

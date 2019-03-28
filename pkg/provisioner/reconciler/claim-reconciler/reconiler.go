@@ -201,7 +201,7 @@ func (r *objectBucketClaimReconciler) createObjectBucket(options *api.BucketOpti
 		return nil, fmt.Errorf("error composing object bucket: %v", err)
 	}
 	r.logD.Info("creating ObjectBucket", "name", ob.Name)
-	if err = util.CreateUntilDefaultTimeout(ob, r.client); err != nil {
+	if err = util.CreateUntilDefaultTimeout(ob, r.client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 	return ob, nil
@@ -214,7 +214,7 @@ func (r *objectBucketClaimReconciler) createSecret(options *api.BucketOptions, c
 		return nil, fmt.Errorf("error composing secret: %v", err)
 	}
 	r.logD.Info("creating Secret", "namespace", secret.Namespace, "name", secret.Name)
-	if err = util.CreateUntilDefaultTimeout(secret, r.client); err != nil {
+	if err = util.CreateUntilDefaultTimeout(secret, r.client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 	return secret, nil
@@ -227,7 +227,7 @@ func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions
 		return nil, fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
 	}
 	r.logD.Info("creating Configmap", "namespace", configMap.Namespace, "name", configMap.Name)
-	if err = util.CreateUntilDefaultTimeout(configMap, r.client); err != nil {
+	if err = util.CreateUntilDefaultTimeout(configMap, r.client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
 	}
 	return configMap, nil
