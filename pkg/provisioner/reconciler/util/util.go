@@ -158,8 +158,8 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client) error {
 	}
 	return wait.PollImmediate(DefaultRetryBaseInterval, DefaultRetryTimeout, func() (done bool, err error) {
 		err = c.Create(context.Background(), obj)
-		if err != nil && !errors.IsAlreadyExists(err) {
-			return false, err
+		if !errors.IsAlreadyExists(err) {
+			return true, err
 		}
 		return true, nil
 	})
