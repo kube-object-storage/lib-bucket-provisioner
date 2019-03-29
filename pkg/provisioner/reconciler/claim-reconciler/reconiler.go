@@ -195,15 +195,15 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 
 	if ob, err = r.createObjectBucket(ob); err != nil {
-		return fmt.Errorf("error reconciling: %v", err)
+		return err
 	}
 
-	if secret, err = r.createSecret(options, connection); err != nil {
-		return fmt.Errorf("error reconciling: %v", err)
+	if secret, err = r.createSecret(obc, connection); err != nil {
+		return err
 	}
 
-	if configMap, err = r.createConfigMap(options, connection); err != nil {
-		return fmt.Errorf("error reconciling: %v", err)
+	if configMap, err = r.createConfigMap(obc, connection); err != nil {
+		return err
 	}
 
 	if err = util.UpdateClaimWithBucket(obc, ob.Name, r.InternalClient); err != nil {
@@ -228,14 +228,14 @@ func (r *objectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 func (r *objectBucketClaimReconciler) createObjectBucket(ob *v1alpha1.ObjectBucket) (*v1alpha1.ObjectBucket, error) {
 	r.logD.Info("creating ObjectBucket", "name", ob.Name)
 	if err := util.CreateUntilDefaultTimeout(ob, r.Client, r.retryInterval, r.retryTimeout); err != nil {
-		return nil, fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
+		return nil, err
 	}
 	return ob, nil
 }
 
-func (r *objectBucketClaimReconciler) createSecret(options *api.BucketOptions, connection *v1alpha1.Connection) (*corev1.Secret, error) {
+func (r *objectBucketClaimReconciler) createSecret(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection) (*corev1.Secret, error) {
 	r.logD.Info("composing Secret")
-	secret, err := util.NewCredentialsSecret(options.ObjectBucketClaim, connection.Authentication)
+	secret, err := util.NewCredentialsSecret(obc, connection.Authentication)
 	if err != nil {
 		return nil, fmt.Errorf("error composing secret: %v", err)
 	}
@@ -247,17 +247,17 @@ func (r *objectBucketClaimReconciler) createSecret(options *api.BucketOptions, c
 	return secret, nil
 }
 
-func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions, connection *v1alpha1.Connection) (*corev1.ConfigMap, error) {
+func (r *objectBucketClaimReconciler) createConfigMap(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection) (*corev1.ConfigMap, error) {
 	r.logD.Info("composing ConfigMap")
-	configMap, err := util.NewBucketConfigMap(connection.Endpoint, options.ObjectBucketClaim)
+	configMap, err := util.NewBucketConfigMap(connection.Endpoint, obc)
 	if err != nil {
-		return nil, fmt.Errorf("error composing configmap for ObjectBucketClaim %s/%s: %v", options.ObjectBucketClaim.Namespace, options.ObjectBucketClaim.Name, err)
+		return nil, fmt.Errorf("error composing ConfigMap: %v", err)
 	}
 
 	r.logD.Info("creating Configmap", "namespace", configMap.Namespace, "name", configMap.Name)
 	err = util.CreateUntilDefaultTimeout(configMap, r.Client, r.retryInterval, r.retryTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
+		return nil, fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, configMap.Name, err)
 	}
 	return configMap, nil
 }
@@ -400,5 +400,3 @@ func (r *objectBucketClaimReconciler) deleteObjectBucket(ob *v1alpha1.ObjectBuck
 		}
 	}
 }
-
-func (r *objectBucketClaimReconciler) cleanUp() {}

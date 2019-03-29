@@ -5,12 +5,9 @@ import (
 	"fmt"
 	"path"
 	"strconv"
-	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/reference"
-
 	"k8s.io/klog"
 
 	"github.com/google/uuid"
@@ -97,24 +94,6 @@ func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 
 	secret.StringData = auth.ToMap()
 	return secret, nil
-}
-
-func ValidEndpoint(ep *v1alpha1.Endpoint) error {
-	if ep == nil {
-		return fmt.Errorf("v1alpha1.Endpoint and v1alpha1.ObjectbucketClaim cannot be nil")
-	}
-	if ep.BucketHost == "" {
-		return fmt.Errorf("bucketHost cannot be empty")
-	}
-	if ep.BucketName == "" {
-		return fmt.Errorf("bucketName cannot be empty")
-	}
-	if !(strings.HasPrefix("https://", ep.BucketHost) ||
-		!strings.HasPrefix("http://", ep.BucketHost) ||
-		!strings.HasPrefix("s3://", ep.BucketHost)) {
-		return fmt.Errorf("bucketHost must contain URL scheme")
-	}
-	return nil
 }
 
 const ObjectBucketFormat = "obc-%s-%s"
