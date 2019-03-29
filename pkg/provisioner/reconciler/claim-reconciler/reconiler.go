@@ -214,6 +214,19 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 }
 
 func (r *objectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) error {
+
+	cm := &corev1.ConfigMap{}
+	if err := r.Client.Get(r.Ctx, key, cm); err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	r.deleteConfigMap(cm)
+
+	secret := &corev1.Secret{}
+	if err := r.Client.Get(r.Ctx, key, secret); err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+	r.deleteSecret(secret)
+
 	ob, err := r.objectBucketForClaimKey(key)
 	if err != nil {
 		return err
@@ -222,7 +235,13 @@ func (r *objectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		r.logI.Info("ob does not exist, likely due to failed provisioning, skipping")
 		return nil
 	}
-	return r.provisioner.Delete(ob)
+
+	err = r.provisioner.Delete(ob)
+	if err == nil {
+		r.deleteObjectBucket(ob)
+	}
+
+	return err
 }
 
 func (r *objectBucketClaimReconciler) createObjectBucket(ob *v1alpha1.ObjectBucket) (*v1alpha1.ObjectBucket, error) {
@@ -303,21 +322,13 @@ func (r *objectBucketClaimReconciler) claimForKey(key client.ObjectKey) (*v1alph
 }
 
 func (r *objectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectKey) (*v1alpha1.ObjectBucket, error) {
-	clusterOBs := &v1alpha1.ObjectBucketList{}
-	err := r.Client.List(r.Ctx, &client.ListOptions{}, clusterOBs)
+	ob := &v1alpha1.ObjectBucket{}
+	obKey := client.ObjectKey{
+		Name: fmt.Sprintf(util.ObjectBucketNameFormat, key.Namespace, key.Name),
+	}
+	err := r.Client.Get(r.Ctx, obKey, ob)
 	if err != nil {
 		return nil, fmt.Errorf("error listing object buckets: %v", err)
-	}
-	if len(clusterOBs.Items) == 0 {
-		r.logI.Info("no objectBuckets map to key")
-	}
-
-	ob := &v1alpha1.ObjectBucket{}
-	for _, item := range clusterOBs.Items {
-		if item.Name == fmt.Sprintf(util.ObjectBucketFormat, key.Namespace, key.Name) {
-			item.DeepCopyInto(ob)
-			break
-		}
 	}
 	return ob, nil
 }

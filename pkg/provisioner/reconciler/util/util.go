@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/tools/reference"
 	"path"
 	"strconv"
 	"time"
@@ -96,7 +97,7 @@ func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 	return secret, nil
 }
 
-const ObjectBucketFormat = "obc-%s-%s"
+const ObjectBucketNameFormat = "obc-%s-%s"
 
 func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client, interval, timeout time.Duration) error {
 
