@@ -31,7 +31,8 @@ func (ak *AccessKeys) toMap() map[string]string {
 // Authentication wraps all supported auth types.  The design choice enables expansion of supported
 // types while protecting backwards compatability.
 type Authentication struct {
-	AccessKeys *AccessKeys `json:"-"`
+	AccessKeys           *AccessKeys       `json:"-"`
+	AdditionalSecretData map[string]string `json:"-"`
 }
 
 // ToMap converts the any defined authentication type into a map[string]string for writing to
@@ -49,20 +50,22 @@ func (a *Authentication) ToMap() map[string]string {
 // Endpoint contains all connection relevant data that an app may require for accessing
 // the bucket
 type Endpoint struct {
-	BucketHost string `json:"bucketHost"`
-	BucketPort int    `json:"bucketPort"`
-	BucketName string `json:"bucketName"`
-	Region     string `json:"region"`
-	SubRegion  string `json:"subRegion"`
-	SSL        bool   `json:"ssl"`
+	BucketHost           string            `json:"bucketHost"`
+	BucketPort           int               `json:"bucketPort"`
+	BucketName           string            `json:"bucketName"`
+	Region               string            `json:"region"`
+	SubRegion            string            `json:"subRegion"`
+	SSL                  bool              `json:"ssl"`
+	AdditionalConfigData map[string]string `json:"additionalConfig"`
 }
 
 // Connection encapsulates Endpoint and Authentication data to simplify the expected return values of the
 // Provision() interface method.  This makes it more clear to library consumers what specific values
 // they should return from their Provisioner interface implementation.
 type Connection struct {
-	Endpoint       *Endpoint       `json:"endpoint"`
-	Authentication *Authentication `json:"-"`
+	Endpoint        *Endpoint         `json:"endpoint"`
+	Authentication  *Authentication   `json:"-"`
+	AdditionalState map[string]string `json:"additionalState"`
 }
 
 // ObjectBucketSpec defines the desired state of ObjectBucket.

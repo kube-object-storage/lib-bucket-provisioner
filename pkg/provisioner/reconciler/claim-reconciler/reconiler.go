@@ -90,7 +90,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	***************************/
 	if err != nil {
 		// The OBC was deleted
-		if errors.IsNotFound(err) || (obc != nil && obc.GetDeletionTimestamp() != nil) {
+		if errors.IsNotFound(err) {
 			r.logI.Info("looks like the OBC was deleted")
 			err := r.handleDeleteClaim(request.NamespacedName)
 			if err != nil {
