@@ -1,6 +1,7 @@
 package provisioner
 
 import (
+	"context"
 	"flag"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/claim-reconciler"
+	internal "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/reconciler-internal"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
@@ -34,16 +36,13 @@ type ProvisionerController struct {
 	Provisioner api.Provisioner
 }
 
-type ProvisionerOptions struct {
+type Config struct {
 	// ProvisionBaseInterval the initial time interval before retrying
 	ProvisionBaseInterval time.Duration
 
 	// ProvisionRetryTimeout the maximum amount of time to attempt bucket provisioning.
 	// Once reached, the claim key is dropped and re-queued
 	ProvisionRetryTimeout time.Duration
-
-	// ProvisionRetryBackoff the base interval multiplier, applied each iteration
-	ProvisionRetryBackoff int
 
 	// The namespace to which the provisioner is restricted.  Empty assumes all namespaces
 	Namespace string
@@ -64,7 +63,7 @@ func NewProvisioner(
 	cfg *rest.Config,
 	provisionerName string,
 	provisioner api.Provisioner,
-	options *ProvisionerOptions,
+	config *Config,
 ) *ProvisionerController {
 
 	initFlags()
@@ -74,7 +73,6 @@ func NewProvisioner(
 
 	logI.Info("new provisioner", "name", provisionerName)
 
-	var err error
 	ctrl := &ProvisionerController{
 		Provisioner: provisioner,
 		Name:        provisionerName,
@@ -86,21 +84,28 @@ func NewProvisioner(
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
 	logD.Info("generating controller manager")
-	ctrl.Manager, err = manager.New(cfg, manager.Options{Namespace: options.Namespace})
+	mgr, err := manager.New(cfg, manager.Options{Namespace: config.Namespace})
 	if err != nil {
 		klog.Fatalf("error creating controller manager: %v", err)
 	}
+	ctrl.Manager = mgr
 
 	logD.Info("adding schemes to manager")
 	if err = apis.AddToScheme(ctrl.Manager.GetScheme()); err != nil {
 		klog.Fatalf("error adding api resources to scheme")
 	}
 
-	logD.Info("getting manager client")
-	client := ctrl.Manager.GetClient()
-	if err != nil {
-		klog.Fatalf("error generating new client: %v", err)
+	internalClient := &internal.InternalClient{
+		Ctx:    context.Background(),
+		Client: ctrl.Manager.GetClient(),
+		Scheme: ctrl.Manager.GetScheme(),
 	}
+
+	reconciler := claimReconciler.NewObjectBucketClaimReconciler(
+		internalClient,
+		provisionerName,
+		provisioner,
+		claimReconciler.Options{})
 
 	skipUpdate := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
@@ -127,10 +132,7 @@ func NewProvisioner(
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		WithEventFilter(skipUpdate).
-		Complete(claimReconciler.NewObjectBucketClaimReconciler(client, ctrl.Manager.GetScheme(), provisionerName, provisioner, claimReconciler.Options{
-			RetryInterval: options.ProvisionBaseInterval,
-			RetryTimeout:  options.ProvisionRetryTimeout,
-		}))
+		Complete(reconciler)
 	if err != nil {
 		if meta.IsNoMatchError(err) {
 			klog.Warningf("Got error: {%v}. All operator CRDs must be created in cluster prior to start.", err)

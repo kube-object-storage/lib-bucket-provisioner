@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	internal "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/reconciler-internal"
 )
 
 const (
@@ -71,36 +72,6 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			BucketRegion:    ep.Region,
 			BucketSubRegion: ep.SubRegion,
 			BucketURL:       fmt.Sprintf("%s:%d/%s", ep.BucketHost, ep.BucketPort, path.Join(ep.Region, ep.SubRegion, ep.BucketName)),
-		},
-	}, nil
-}
-
-func NewObjectBucket(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection, client client.Client, ctx context.Context, scheme *runtime.Scheme) (*v1alpha1.ObjectBucket, error) {
-
-	claimRef, err := reference.GetReference(scheme, obc)
-	if err != nil {
-		return nil, fmt.Errorf("could not get object ref: %v", err)
-	}
-
-	class := &storagev1.StorageClass{}
-	err = client.Get(ctx, types.NamespacedName{Name: obc.Spec.StorageClassName}, class)
-	if err != nil {
-		return nil, fmt.Errorf("could not get storage class: %v", err)
-	}
-
-	return &v1alpha1.ObjectBucket{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf(ObjectBucketFormat, obc.Namespace, obc.Name),
-		},
-		Spec: v1alpha1.ObjectBucketSpec{
-			StorageClassName: obc.Spec.StorageClassName,
-			ReclaimPolicy:    class.ReclaimPolicy,
-			ClaimRef:         claimRef,
-			Connection:       connection,
-		},
-		// TODO probably need to prepopulate some prebinding, etc
-		Status: v1alpha1.ObjectBucketStatus{
-			Phase: v1alpha1.ObjectBucketClaimStatusPhaseBound,
 		},
 	}, nil
 }
@@ -194,7 +165,7 @@ func generateBucketName(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
 }
 
-func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, client client.Client, ctx context.Context) (*storagev1.StorageClass, error) {
+func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, c *internal.InternalClient) (*storagev1.StorageClass, error) {
 
 	if obc == nil {
 		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
@@ -204,8 +175,8 @@ func StorageClassForClaim(obc *v1alpha1.ObjectBucketClaim, client client.Client,
 	}
 
 	class := &storagev1.StorageClass{}
-	err := client.Get(
-		ctx,
+	err := c.Client.Get(
+		c.Ctx,
 		types.NamespacedName{
 			Namespace: "",
 			Name:      obc.Spec.StorageClassName,
@@ -226,7 +197,7 @@ func HasFinalizer(obj metav1.Object) bool {
 	return false
 }
 
-func RemoveFinalizer(obj metav1.Object, c client.Client, ctx context.Context) error {
+func RemoveFinalizer(obj metav1.Object, c *internal.InternalClient) error {
 	if runObj, ok := obj.(runtime.Object); ok {
 		finalizers := obj.GetFinalizers()
 		for i, f := range finalizers {
@@ -235,7 +206,7 @@ func RemoveFinalizer(obj metav1.Object, c client.Client, ctx context.Context) er
 				break
 			}
 		}
-		err := c.Update(ctx, runObj)
+		err := c.Client.Update(c.Ctx, runObj)
 		if err != nil {
 			return err
 		}
@@ -243,11 +214,19 @@ func RemoveFinalizer(obj metav1.Object, c client.Client, ctx context.Context) er
 	return nil
 }
 
-func UpdateClaimWithBucket(obc *v1alpha1.ObjectBucketClaim, name string, c client.Client, ctx context.Context) error {
+func UpdateClaimWithBucket(obc *v1alpha1.ObjectBucketClaim, name string, c *internal.InternalClient) error {
 	obc.Spec.ObjectBucketName = name
-	err := c.Update(ctx, obc)
+	err := c.Client.Update(c.Ctx, obc)
 	if err != nil {
 		return fmt.Errorf("error adding OB name to OBC: %v", err)
 	}
 	return nil
+}
+
+func ClaimRefForClaim(obc *v1alpha1.ObjectBucketClaim, c internal.InternalClient) (*corev1.ObjectReference, error) {
+	ref, err := reference.GetReference(c.Scheme, obc)
+	if err != nil {
+		return nil, fmt.Errorf("error getting claimref: %v", err)
+	}
+	return ref, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"testing"
 	"time"
@@ -21,10 +22,9 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	internal "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/reconciler-internal"
 )
 
 const (
@@ -48,7 +48,7 @@ var (
 // test global provisioner fields
 type fields struct {
 	ctx             context.Context
-	client          client.Client
+	internalClient  *internal.InternalClient
 	provisionerName string
 	provisioner     api.Provisioner
 	retryInterval   time.Duration
@@ -58,7 +58,7 @@ type fields struct {
 
 var testFields = fields{
 	ctx:             context.TODO(),
-	client:          nil, // generated per iteration
+	internalClient:  nil, // generated per iteration
 	provisionerName: provisionerName,
 	provisioner:     &util.FakeProvisioner{},
 	retryInterval:   1,
@@ -66,7 +66,7 @@ var testFields = fields{
 	retryBackoff:    1,
 }
 
-func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient client.Client) {
+func BuildFakeInternalClient(t *testing.T, initObjs ...runtime.Object) (fakeClient *internal.InternalClient) {
 
 	t.Helper()
 
@@ -80,8 +80,11 @@ func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient clien
 	if err := v1alpha1.AddToScheme(scheme); err != nil {
 		t.Errorf("error adding storage/v1 scheme: %v", err)
 	}
-	fakeClient = fake.NewFakeClientWithScheme(scheme, initObjs...)
-
+	fakeClient = &internal.InternalClient{
+		Ctx:    context.Background(),
+		Client: fake.NewFakeClientWithScheme(scheme, initObjs...),
+		Scheme: scheme,
+	}
 	return fakeClient
 }
 
@@ -92,7 +95,7 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 	)
 
 	type args struct {
-		c           client.Client
+		c           *internal.InternalClient
 		name        string
 		provisioner api.Provisioner
 		options     Options
@@ -115,8 +118,6 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 				},
 			},
 			want: &objectBucketClaimReconciler{
-				ctx:             context.TODO(),
-				client:          nil,
 				provisionerName: strings.ToLower(provisionerName),
 				provisioner:     &util.FakeProvisioner{},
 				retryInterval:   util.DefaultRetryBaseInterval,
@@ -135,8 +136,6 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 				},
 			},
 			want: &objectBucketClaimReconciler{
-				ctx:             context.TODO(),
-				client:          nil,
 				provisionerName: strings.ToLower(provisionerName),
 				provisioner:     &util.FakeProvisioner{},
 				retryInterval:   retryInt,
@@ -146,10 +145,10 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 	}
 	for _, tt := range tests {
 
-		tt.args.c = BuildFakeClient(t)
+		tt.args.c = BuildFakeInternalClient(t)
 
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewObjectBucketClaimReconciler(tt.args.c, tt.args.scheme, tt.args.name, tt.args.provisioner, tt.args.options)
+			got := NewObjectBucketClaimReconciler(tt.args.c, tt.args.name, tt.args.provisioner, tt.args.options)
 			if n := strings.ToLower(tt.args.name); got.provisionerName != n {
 				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() name = %v, want %v", got.provisionerName, tt.want.provisionerName)
 			}
@@ -200,23 +199,22 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 	}
 	for _, tt := range tests {
 
-		tt.fields.client = BuildFakeClient(t)
+		tt.fields.internalClient = BuildFakeInternalClient(t)
 		if tt.class != nil {
-			if err := tt.fields.client.Create(tt.fields.ctx, tt.class); err != nil {
+			if err := tt.fields.internalClient.Client.Create(tt.fields.ctx, tt.class); err != nil {
 				t.Errorf("error precreating class: %v", err)
 			}
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
 			r := &objectBucketClaimReconciler{
-				ctx:             tt.fields.ctx,
-				client:          tt.fields.client,
+				InternalClient:  tt.fields.internalClient,
 				provisionerName: tt.fields.provisionerName,
 				provisioner:     tt.fields.provisioner,
 				retryInterval:   tt.fields.retryInterval,
 				retryTimeout:    tt.fields.retryTimeout,
-				logI:            testLogI,
 				logD:            testLogD,
+				logI:            testLogI,
 			}
 			if got := r.shouldProvision(tt.args.obc); got != tt.want {
 				t.Errorf("objectBucketClaimReconciler.shouldProvision() = %v, want %v", got, tt.want)
@@ -267,22 +265,23 @@ func Test_objectBucketClaimReconciler_claimFromKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 
-		tt.fields.client = BuildFakeClient(t)
+		tt.fields.internalClient = BuildFakeInternalClient(t)
 
 		if tt.want != nil {
-			if err := tt.fields.client.Create(tt.fields.ctx, tt.want); err != nil {
+			if err := tt.fields.internalClient.Client.Create(tt.fields.ctx, tt.want); err != nil {
 				t.Errorf("objectBucketClaimReconciler.claimForKey() error = %v,", fmt.Sprintf("error precreating object: %v", err))
 			}
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
 			r := &objectBucketClaimReconciler{
-				ctx:             tt.fields.ctx,
-				client:          tt.fields.client,
+				InternalClient:  tt.fields.internalClient,
 				provisionerName: tt.fields.provisionerName,
 				provisioner:     tt.fields.provisioner,
 				retryInterval:   tt.fields.retryInterval,
 				retryTimeout:    tt.fields.retryTimeout,
+				logD:            nil,
+				logI:            nil,
 			}
 			got, err := r.claimForKey(tt.args.key)
 			if (err != nil) != tt.wantErr {

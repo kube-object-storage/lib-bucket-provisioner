@@ -9,21 +9,13 @@ import (
 
 type FakeProvisioner struct{}
 
-func (p *FakeProvisioner) Provision(options *api.BucketOptions) (connection *v1alpha1.Connection, err error) {
+var _ api.Provisioner = &FakeProvisioner{}
+
+func (p *FakeProvisioner) Provision(options *api.BucketOptions) (*v1alpha1.ObjectBucket, error) {
 	if options == nil || options.ObjectBucketClaim == nil {
 		return nil, fmt.Errorf("got nil ptr")
 	}
-	return &v1alpha1.Connection{
-		Endpoint: &v1alpha1.Endpoint{
-			BucketHost: "www.test.com",
-			BucketPort: 11111,
-			BucketName: options.BucketName,
-			Region:     "",
-			SubRegion:  "",
-			SSL:        false,
-		},
-		Authentication: &v1alpha1.Authentication{},
-	}, nil
+	return &v1alpha1.ObjectBucket{}, nil
 }
 
 func (p *FakeProvisioner) Delete(ob *v1alpha1.ObjectBucket) (err error) {

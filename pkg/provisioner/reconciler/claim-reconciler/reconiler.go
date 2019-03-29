@@ -3,6 +3,7 @@ package reconciler
 import (
 	"context"
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
 
@@ -16,19 +17,17 @@ import (
 	"k8s.io/klog"
 	"k8s.io/klog/klogr"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 	pErr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
+	internal "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/reconciler-internal"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
 type objectBucketClaimReconciler struct {
-	ctx    context.Context
-	client client.Client
-	scheme *runtime.Scheme
+	*internal.InternalClient
 
 	provisionerName string
 	provisioner     api.Provisioner
@@ -47,7 +46,7 @@ type Options struct {
 	RetryTimeout  time.Duration
 }
 
-func NewObjectBucketClaimReconciler(c client.Client, scheme *runtime.Scheme, name string, provisioner api.Provisioner, options Options) *objectBucketClaimReconciler {
+func NewObjectBucketClaimReconciler(client *internal.InternalClient, name string, provisioner api.Provisioner, options Options) *objectBucketClaimReconciler {
 	locallogD := klogr.New().WithName(util.DomainPrefix + "/reconciler/" + name).V(util.DebugLogLvl)
 	locallogI := klogr.New().WithName(util.DomainPrefix + "/reconciler/" + name)
 
@@ -62,9 +61,7 @@ func NewObjectBucketClaimReconciler(c client.Client, scheme *runtime.Scheme, nam
 	}
 	locallogD.Info("retry loop setting", "RetryTimeout", options.RetryTimeout)
 	return &objectBucketClaimReconciler{
-		ctx:             context.Background(),
-		client:          c,
-		scheme:          scheme,
+		InternalClient:  client,
 		provisionerName: strings.ToLower(name),
 		provisioner:     provisioner,
 		retryInterval:   options.RetryInterval,
@@ -108,7 +105,7 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		r.logI.Info("skipping provision")
 		return done, nil
 	}
-	class, err := util.StorageClassForClaim(obc, r.client, r.ctx)
+	class, err := util.StorageClassForClaim(obc, r.InternalClient)
 	if err != nil {
 		klog.Error(err)
 		return done, err
@@ -162,7 +159,7 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return fmt.Errorf("error composing bucket name: %v", err)
 	}
 
-	class, err := util.StorageClassForClaim(obc, r.client, r.ctx)
+	class, err := util.StorageClassForClaim(obc, r.InternalClient)
 	if err != nil {
 		return err
 	}
@@ -188,21 +185,15 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 
 	r.logD.Info("provisioning", "bucket", options.BucketName)
-	connection, err = r.provisioner.Provision(options)
+	ob, err = r.provisioner.Provision(options)
 
 	if err != nil {
 		return fmt.Errorf("error provisioning bucket: %v", err)
+	} else if ob == (&v1alpha1.ObjectBucket{}) {
+		return fmt.Errorf("provisioner returned nil/empty object bucket")
 	}
 
-	if connection == nil {
-		return fmt.Errorf("error provisioning bucket.  got nil connection")
-	}
-
-	if err := util.ValidEndpoint(connection.Endpoint); err != nil {
-		return err
-	}
-
-	if ob, err = r.createObjectBucket(options, connection); err != nil {
+	if ob, err = r.createObjectBucket(ob); err != nil {
 		return fmt.Errorf("error reconciling: %v", err)
 	}
 
@@ -214,7 +205,7 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return fmt.Errorf("error reconciling: %v", err)
 	}
 
-	if err = util.UpdateClaimWithBucket(obc, ob.Name, r.client, r.ctx); err != nil {
+	if err = util.UpdateClaimWithBucket(obc, ob.Name, r.InternalClient); err != nil {
 		return err
 	}
 
@@ -233,15 +224,9 @@ func (r *objectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 	return r.provisioner.Delete(ob)
 }
 
-func (r *objectBucketClaimReconciler) createObjectBucket(options *api.BucketOptions, connection *v1alpha1.Connection) (*v1alpha1.ObjectBucket, error) {
-	r.logD.Info("composing ObjectBucket")
-	ob, err := util.NewObjectBucket(options.ObjectBucketClaim, connection, r.client, r.ctx, r.scheme)
-	if err != nil {
-		return nil, fmt.Errorf("error composing object bucket: %v", err)
-	}
-
+func (r *objectBucketClaimReconciler) createObjectBucket(ob *v1alpha1.ObjectBucket) (*v1alpha1.ObjectBucket, error) {
 	r.logD.Info("creating ObjectBucket", "name", ob.Name)
-	if err = util.CreateUntilDefaultTimeout(ob, r.client, r.retryInterval, r.retryTimeout); err != nil {
+	if err := util.CreateUntilDefaultTimeout(ob, r.Client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create ObjectBucket %q: %v", ob.Name, err)
 	}
 	return ob, nil
@@ -255,7 +240,7 @@ func (r *objectBucketClaimReconciler) createSecret(options *api.BucketOptions, c
 	}
 
 	r.logD.Info("creating Secret", "namespace", secret.Namespace, "name", secret.Name)
-	if err = util.CreateUntilDefaultTimeout(secret, r.client, r.retryInterval, r.retryTimeout); err != nil {
+	if err = util.CreateUntilDefaultTimeout(secret, r.Client, r.retryInterval, r.retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 	return secret, nil
@@ -269,7 +254,7 @@ func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions
 	}
 
 	r.logD.Info("creating Configmap", "namespace", configMap.Namespace, "name", configMap.Name)
-	err = util.CreateUntilDefaultTimeout(configMap, r.client, r.retryInterval, r.retryTimeout)
+	err = util.CreateUntilDefaultTimeout(configMap, r.Client, r.retryInterval, r.retryTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create ConfigMap %q for claim %v: %v", configMap.Name, options.ObjectBucketClaim.Name, err)
 	}
@@ -278,7 +263,7 @@ func (r *objectBucketClaimReconciler) createConfigMap(options *api.BucketOptions
 
 func (r *objectBucketClaimReconciler) createUntilDefaultTimeout(obj runtime.Object) error {
 	return wait.PollImmediate(r.retryInterval, r.retryTimeout, func() (done bool, err error) {
-		err = r.client.Create(r.ctx, obj)
+		err = r.Client.Create(r.Ctx, obj)
 		if err != nil && !errors.IsAlreadyExists(err) {
 			return false, err
 		}
@@ -307,7 +292,7 @@ func (r *objectBucketClaimReconciler) supportedProvisioner(provisioner string) b
 
 func (r *objectBucketClaimReconciler) claimForKey(key client.ObjectKey) (*v1alpha1.ObjectBucketClaim, error) {
 	obc := &v1alpha1.ObjectBucketClaim{}
-	if err := r.client.Get(r.ctx, key, obc); err != nil {
+	if err := r.Client.Get(r.Ctx, key, obc); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, err
 		}
@@ -318,7 +303,7 @@ func (r *objectBucketClaimReconciler) claimForKey(key client.ObjectKey) (*v1alph
 
 func (r *objectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectKey) (*v1alpha1.ObjectBucket, error) {
 	clusterOBs := &v1alpha1.ObjectBucketList{}
-	err := r.client.List(r.ctx, &client.ListOptions{}, clusterOBs)
+	err := r.Client.List(r.Ctx, &client.ListOptions{}, clusterOBs)
 	if err != nil {
 		return nil, fmt.Errorf("error listing object buckets: %v", err)
 	}
@@ -338,13 +323,13 @@ func (r *objectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectK
 
 func (r *objectBucketClaimReconciler) configMapForClaimKey(key client.ObjectKey) (*corev1.ConfigMap, error) {
 	var cm *corev1.ConfigMap
-	err := r.client.Get(r.ctx, key, cm)
+	err := r.Client.Get(r.Ctx, key, cm)
 	return cm, err
 }
 
 func (r *objectBucketClaimReconciler) updateObjectBucketClaimPhase(obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase) (*v1alpha1.ObjectBucketClaim, error) {
 	obc.Status.Phase = phase
-	err := r.client.Update(r.ctx, obc)
+	err := r.Client.Update(r.Ctx, obc)
 	if err != nil {
 		return nil, fmt.Errorf("error updating phase: %v", err)
 	}
@@ -371,13 +356,13 @@ func (r *objectBucketClaimReconciler) deleteConfigMap(cm *corev1.ConfigMap) {
 	if cm != nil {
 		r.logD.Info("deleting ConfigMap", "name", cm.Name)
 
-		err := util.RemoveFinalizer(cm, r.client, r.ctx)
+		err := util.RemoveFinalizer(cm, r.InternalClient)
 		if err != nil {
-			klog.Errorf("error remove finalizer", "ConfigMap", fmt.Sprintf("%s/%s", cm.Namespace, cm.Name))
+			klog.Errorf("error removing finalizer on ConfigMap %s/%s: %v", cm.Namespace, cm.Name, err)
 			return
 		}
 
-		err = r.client.Delete(context.Background(), cm)
+		err = r.Client.Delete(context.Background(), cm)
 		if err != nil && errors.IsNotFound(err) {
 			klog.Errorf("Error deleting ConfigMap %v: %v", cm.Name, err)
 		}
@@ -388,13 +373,13 @@ func (r *objectBucketClaimReconciler) deleteSecret(sec *corev1.Secret) {
 	if sec != nil {
 		r.logD.Info("deleting Secret", "name", sec.Name)
 
-		err := util.RemoveFinalizer(sec, r.client, r.ctx)
+		err := util.RemoveFinalizer(sec, r.InternalClient)
 		if err != nil {
-			klog.Errorf("error remove finalizer", "Secret", fmt.Sprintf("%s/%s", sec.Namespace, sec.Name))
+			klog.Errorf("error removing finalizer on Secret %s/%s: %v", sec.Namespace, sec.Name, err)
 			return
 		}
 
-		if err := r.client.Delete(context.Background(), sec); err != nil && errors.IsNotFound(err) {
+		if err := r.Client.Delete(context.Background(), sec); err != nil && errors.IsNotFound(err) {
 			klog.Errorf("Error deleting Secret %v: %v", sec.Name, err)
 		}
 	}
@@ -403,14 +388,13 @@ func (r *objectBucketClaimReconciler) deleteSecret(sec *corev1.Secret) {
 func (r *objectBucketClaimReconciler) deleteObjectBucket(ob *v1alpha1.ObjectBucket) {
 	if ob != nil {
 
-		err := util.RemoveFinalizer(ob, r.client, r.ctx)
+		err := util.RemoveFinalizer(ob, r.InternalClient)
 		if err != nil {
-			klog.Errorf("error remove finalizer", "ObjectBucket", fmt.Sprintf("%%s", ob.Name))
-			return
+			klog.Errorf("error removing finalizer on ObjectBucket %s: %v", ob.Name, err)
 		}
 
 		r.logD.Info("deleting ObjectBucket", "name", ob.Name)
-		if err := r.client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
+		if err := r.Client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
 			klog.Errorf("Error deleting ObjectBucket %v: %v", ob.Name, err)
 		}
 	}

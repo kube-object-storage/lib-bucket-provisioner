@@ -11,7 +11,7 @@ import (
 type Provisioner interface {
 	// Provision should be implemented to handle bucket creation
 	// for the target object store
-	Provision(options *BucketOptions) (*v1alpha1.Connection, error)
+	Provision(options *BucketOptions) (*v1alpha1.ObjectBucket, error)
 	// Delete should be implemented to handle bucket deletion
 	// for the target object store
 	Delete(ob *v1alpha1.ObjectBucket) error
