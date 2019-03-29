@@ -85,10 +85,12 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 	obc, err := r.claimForKey(request.NamespacedName)
 
-	// Delete path
+	/**************************
+	 Delete Bucket
+	***************************/
 	if err != nil {
 		// The OBC was deleted
-		if errors.IsNotFound(err) || obc.DeletionTimestamp != nil {
+		if errors.IsNotFound(err) || (obc != nil && obc.GetDeletionTimestamp() != nil) {
 			r.logI.Info("looks like the OBC was deleted")
 			err := r.handleDeleteClaim(request.NamespacedName)
 			if err != nil {
@@ -99,7 +101,9 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return done, fmt.Errorf("error getting claim for request key %q", request)
 	}
 
-	// Provision path
+	/**************************
+	 Provision Bucket
+	***************************/
 	if !r.shouldProvision(obc) {
 		r.logI.Info("skipping provision")
 		return done, nil
