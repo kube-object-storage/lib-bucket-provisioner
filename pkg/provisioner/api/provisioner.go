@@ -26,7 +26,7 @@ type BucketOptions struct {
 	ObjectBucketName string
 	// BucketName is the name of the bucket within the object store
 	BucketName string
-	// ObjectBucketClaim is a pointer to the initiating OBC object
+	// ObjectBucketClaim is a copy of the reconciler's OBC
 	ObjectBucketClaim *v1alpha1.ObjectBucketClaim
 	// Parameters is a complete copy of the OBC's storage class Parameters field
 	Parameters map[string]string

@@ -167,7 +167,7 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		ReclaimPolicy:     class.ReclaimPolicy,
 		ObjectBucketName:  fmt.Sprintf("obc-%s-%s", obc.Namespace, obc.Name),
 		BucketName:        bucketName,
-		ObjectBucketClaim: obc,
+		ObjectBucketClaim: obc.DeepCopy(),
 		Parameters:        class.Parameters,
 	}
 
