@@ -138,8 +138,16 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		err        error
 	)
 
-	// If any process of provisioning occurs, clean up all artifacts of the provision process
-	// so we can start fresh in the next iteration`
+	obc, err = r.claimForKey(key)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return fmt.Errorf("OBC was lost before we could provision: %v", err)
+		}
+		return err
+	}
+
+	// Following getting the claim, if any provisioning task fails, clean up provisiong artifacts.
+	// It is assumed that if the claim get fails, no resources were generated to begin with.
 	defer func() {
 		if err != nil {
 			klog.Errorf("errored during reconciliation: %v", err)
@@ -157,11 +165,16 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	bucketName, err := util.ComposeBucketName(obc)
 	if err != nil {
 		return fmt.Errorf("error composing bucket name: %v", err)
+
 	}
 
 	class, err := util.StorageClassForClaim(obc, r.InternalClient)
 	if err != nil {
 		return err
+	}
+
+	if !r.shouldProvision(obc) {
+		return nil
 	}
 
 	options := &api.BucketOptions{
@@ -170,18 +183,6 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		BucketName:        bucketName,
 		ObjectBucketClaim: obc.DeepCopy(),
 		Parameters:        class.Parameters,
-	}
-
-	obc, err = r.claimForKey(key)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return fmt.Errorf("OBC was lost before we could provision: %v", err)
-		}
-		return err
-	}
-
-	if !r.shouldProvision(obc) {
-		return nil
 	}
 
 	r.logD.Info("provisioning", "bucket", options.BucketName)
