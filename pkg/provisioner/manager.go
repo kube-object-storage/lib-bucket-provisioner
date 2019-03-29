@@ -2,6 +2,8 @@ package provisioner
 
 import (
 	"flag"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -130,6 +132,10 @@ func NewProvisioner(
 			RetryTimeout:  options.ProvisionRetryTimeout,
 		}))
 	if err != nil {
+		if meta.IsNoMatchError(err) {
+			klog.Warningf("Got error: {%v}. All operator CRDs must be created in cluster prior to start.", err)
+			os.Exit(1)
+		}
 		klog.Fatalf("error creating ObjectBucketClaim controller: %v", err)
 	}
 	return ctrl
