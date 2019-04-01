@@ -131,11 +131,10 @@ func (r *objectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim) error {
 
 	var (
-		ob         *v1alpha1.ObjectBucket
-		connection *v1alpha1.Connection
-		secret     *corev1.Secret
-		configMap  *corev1.ConfigMap
-		err        error
+		ob        *v1alpha1.ObjectBucket
+		secret    *corev1.Secret
+		configMap *corev1.ConfigMap
+		err       error
 	)
 
 	obc, err = r.claimForKey(key)
@@ -198,11 +197,11 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
-	if secret, err = r.createSecret(obc, connection); err != nil {
+	if secret, err = r.createSecret(obc, ob.Spec.Authentication); err != nil {
 		return err
 	}
 
-	if configMap, err = r.createConfigMap(obc, connection); err != nil {
+	if configMap, err = r.createConfigMap(obc, ob.Spec.Endpoint); err != nil {
 		return err
 	}
 
@@ -252,9 +251,9 @@ func (r *objectBucketClaimReconciler) createObjectBucket(ob *v1alpha1.ObjectBuck
 	return ob, nil
 }
 
-func (r *objectBucketClaimReconciler) createSecret(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection) (*corev1.Secret, error) {
+func (r *objectBucketClaimReconciler) createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*corev1.Secret, error) {
 	r.logD.Info("composing Secret")
-	secret, err := util.NewCredentialsSecret(obc, connection.Authentication)
+	secret, err := util.NewCredentialsSecret(obc, auth)
 	if err != nil {
 		return nil, fmt.Errorf("error composing secret: %v", err)
 	}
@@ -266,9 +265,9 @@ func (r *objectBucketClaimReconciler) createSecret(obc *v1alpha1.ObjectBucketCla
 	return secret, nil
 }
 
-func (r *objectBucketClaimReconciler) createConfigMap(obc *v1alpha1.ObjectBucketClaim, connection *v1alpha1.Connection) (*corev1.ConfigMap, error) {
+func (r *objectBucketClaimReconciler) createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint) (*corev1.ConfigMap, error) {
 	r.logD.Info("composing ConfigMap")
-	configMap, err := util.NewBucketConfigMap(connection.Endpoint, obc)
+	configMap, err := util.NewBucketConfigMap(ep, obc)
 	if err != nil {
 		return nil, fmt.Errorf("error composing ConfigMap: %v", err)
 	}
