@@ -3,10 +3,11 @@ package util
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/tools/reference"
 	"path"
 	"strconv"
 	"time"
+
+	"k8s.io/client-go/tools/reference"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
@@ -29,8 +30,8 @@ const (
 	DefaultRetryBaseInterval = time.Second * 10
 	DefaultRetryTimeout      = time.Second * 360
 
-	DebugInfoLvl = iota
-	DebugLogLvl
+	DebugInfoLvl = 0
+	DebugLogLvl  = 1
 
 	DomainPrefix = "objectbucket.io"
 
@@ -181,18 +182,24 @@ func HasFinalizer(obj metav1.Object) bool {
 	return false
 }
 
+// RemoveFinalizer deletes the provisioner libraries's finalizer from the Object.  Finalizers added by
+// other sources are left intact.
+// obj MUST be a point so that changes made to obj finalizers are reflected in runObj
 func RemoveFinalizer(obj metav1.Object, c *internal.InternalClient) error {
-	if runObj, ok := obj.(runtime.Object); ok {
-		finalizers := obj.GetFinalizers()
-		for i, f := range finalizers {
-			if f == Finalizer {
-				obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
-				break
+	runObj, ok := obj.(runtime.Object)
+	if !ok {
+		return fmt.Errorf("could not case obj to runtime.Object interface")
+	}
+
+	finalizers := obj.GetFinalizers()
+	for i, f := range finalizers {
+		if f == Finalizer {
+			obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
+			err := c.Client.Update(c.Ctx, runObj)
+			if err != nil {
+				return err
 			}
-		}
-		err := c.Client.Update(c.Ctx, runObj)
-		if err != nil {
-			return err
+			break
 		}
 	}
 	return nil

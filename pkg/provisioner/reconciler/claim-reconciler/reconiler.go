@@ -3,9 +3,10 @@ package reconciler
 import (
 	"context"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -214,33 +215,58 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 
 func (r *objectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) error {
 
+	// TODO each delete should retry a few times to mitigate intermittent errors
+
 	cm := &corev1.ConfigMap{}
-	if err := r.Client.Get(r.Ctx, key, cm); err != nil && !errors.IsNotFound(err) {
-		return err
+	if err := r.Client.Get(r.Ctx, key, cm); err == nil {
+		err = r.deleteConfigMap(cm)
+		if err != nil {
+			return err
+		}
+	} else if errors.IsNotFound(err) {
+		klog.Warningf("ConfigMap for key %v not found, assuming it was deleted in a previous iteration", key)
+	} else {
+		klog.Errorf("error getting ConfigMap for deletion: %v", err)
 	}
-	r.deleteConfigMap(cm)
 
 	secret := &corev1.Secret{}
-	if err := r.Client.Get(r.Ctx, key, secret); err != nil && !errors.IsNotFound(err) {
-		return err
+	if err := r.Client.Get(r.Ctx, key, secret); err == nil {
+		err = r.deleteSecret(secret)
+		if err != nil {
+			return err
+		}
+	} else if errors.IsNotFound(err) {
+		klog.Warningf("Secret for key %v not found, assuming it was deleted in a previous iteration", key)
+	} else {
+		klog.Errorf("error getting Secret for deletion: %v", err)
 	}
-	r.deleteSecret(secret)
 
 	ob, err := r.objectBucketForClaimKey(key)
 	if err != nil {
-		return err
-	}
-	if ob == nil {
-		r.logI.Info("ob does not exist, likely due to failed provisioning, skipping")
+		if errors.IsNotFound(err) {
+			klog.Errorf("objectBucket was deleted prior to this iteration, ending reconciling")
+			return nil
+		} else {
+			return fmt.Errorf("error getting objectBucket for key: %v", err)
+		}
+	} else if ob == nil {
+		klog.Warning("go a nil bucket for claim key, assuming deletion complete")
 		return nil
 	}
 
-	err = r.provisioner.Delete(ob)
-	if err == nil {
-		r.deleteObjectBucket(ob)
+	if err = r.provisioner.Delete(ob); err != nil {
+		// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
+		return fmt.Errorf("error deprovisioning bucket %v", err)
 	}
 
-	return err
+	if err = r.deleteObjectBucket(ob); err != nil {
+		if errors.IsNotFound(err) {
+			klog.Warning("ObjectBucket %v vanished during deprovisioning, skipping", ob.Name)
+		} else {
+			return fmt.Errorf("error deleting objectBucket %v", ob.Name)
+		}
+	}
+	return nil
 }
 
 func (r *objectBucketClaimReconciler) createObjectBucket(ob *v1alpha1.ObjectBucket) (*v1alpha1.ObjectBucket, error) {
@@ -363,50 +389,97 @@ func (r *objectBucketClaimReconciler) deprovisionBucket(ob *v1alpha1.ObjectBucke
 	}
 }
 
-func (r *objectBucketClaimReconciler) deleteConfigMap(cm *corev1.ConfigMap) {
-	if cm != nil {
-		r.logD.Info("deleting ConfigMap", "name", cm.Name)
+func (r *objectBucketClaimReconciler) deleteConfigMap(cm *corev1.ConfigMap) error {
+	if cm == nil {
+		klog.Errorf("got nil ConfigMap, skipping")
+		return nil
+	}
+	if util.HasFinalizer(cm) {
+		r.logD.Info("removing finalizer from ConfigMap", "name", cm.Name)
 
 		err := util.RemoveFinalizer(cm, r.InternalClient)
 		if err != nil {
-			klog.Errorf("error removing finalizer on ConfigMap %s/%s: %v", cm.Namespace, cm.Name, err)
-			return
-		}
-
-		err = r.Client.Delete(context.Background(), cm)
-		if err != nil && errors.IsNotFound(err) {
-			klog.Errorf("Error deleting ConfigMap %v: %v", cm.Name, err)
+			if errors.IsNotFound(err) {
+				klog.Warning("ConfigMap %v vanished before we could remove the finalizer, assuming deleted")
+				return nil
+			} else {
+				return fmt.Errorf("error removing finalizer on ConfigMap %s/%s: %v", cm.Namespace, cm.Name, err)
+			}
 		}
 	}
+
+	err := r.Client.Delete(context.Background(), cm)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.Warning("ConfigMap %v vanished before we could delete it, skipping")
+			return nil
+		} else {
+			return fmt.Errorf("error deleting ConfigMap %s/%s: %v", cm.Namespace, cm.Name, err)
+		}
+	}
+	return nil
 }
 
-func (r *objectBucketClaimReconciler) deleteSecret(sec *corev1.Secret) {
-	if sec != nil {
-		r.logD.Info("deleting Secret", "name", sec.Name)
+func (r *objectBucketClaimReconciler) deleteSecret(sec *corev1.Secret) error {
+	if sec == nil {
+		klog.Errorf("got nil secret, skipping")
+		return nil
+	}
+	if util.HasFinalizer(sec) {
+		r.logD.Info("removing finalizer from Secret", "namespace", sec.Namespace, "name", sec.Name)
 
 		err := util.RemoveFinalizer(sec, r.InternalClient)
 		if err != nil {
-			klog.Errorf("error removing finalizer on Secret %s/%s: %v", sec.Namespace, sec.Name, err)
-			return
-		}
-
-		if err := r.Client.Delete(context.Background(), sec); err != nil && errors.IsNotFound(err) {
-			klog.Errorf("Error deleting Secret %v: %v", sec.Name, err)
+			if errors.IsNotFound(err) {
+				klog.Warning("Secret %v vanished before we could remove the finalizer, assuming deleted")
+				return nil
+			} else {
+				return fmt.Errorf("error removing finalizer on Secret %s/%s: %v", sec.Namespace, sec.Name, err)
+			}
 		}
 	}
+
+	err := r.Client.Delete(context.Background(), sec)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.Warning("Secret %v vanished before we could delete it, skipping")
+			return nil
+		} else {
+			return fmt.Errorf("error deleting Secret %s/%s: %v", sec.Namespace, sec.Name, err)
+		}
+	}
+	return nil
 }
 
-func (r *objectBucketClaimReconciler) deleteObjectBucket(ob *v1alpha1.ObjectBucket) {
-	if ob != nil {
+func (r *objectBucketClaimReconciler) deleteObjectBucket(ob *v1alpha1.ObjectBucket) error {
+
+	if ob == nil {
+		klog.Errorf("got nil objectBucket, skipping")
+		return nil
+	}
+	if util.HasFinalizer(ob) {
+
+		r.logD.Info("deleting ObjectBucket", "name", ob.Name)
 
 		err := util.RemoveFinalizer(ob, r.InternalClient)
 		if err != nil {
-			klog.Errorf("error removing finalizer on ObjectBucket %s: %v", ob.Name, err)
-		}
-
-		r.logD.Info("deleting ObjectBucket", "name", ob.Name)
-		if err := r.Client.Delete(context.Background(), ob); err != nil && !errors.IsNotFound(err) {
-			klog.Errorf("Error deleting ObjectBucket %v: %v", ob.Name, err)
+			if errors.IsNotFound(err) {
+				klog.Warning("ObjectBucket %v vanished before we could remove the finalizer, assuming deleted")
+				return nil
+			} else {
+				return fmt.Errorf("error removing finalizer on ObjectBucket %s: %v", ob.Name, err)
+			}
 		}
 	}
+
+	err := r.Client.Delete(context.Background(), ob)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.Warning("ObjectBucket %v vanished before we could delete it, skipping")
+			return nil
+		} else {
+			return fmt.Errorf("error deleting ObjectBucket %s/%s: %v", ob.Namespace, ob.Name, err)
+		}
+	}
+	return nil
 }

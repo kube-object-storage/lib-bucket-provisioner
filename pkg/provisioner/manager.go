@@ -3,9 +3,10 @@ package provisioner
 import (
 	"context"
 	"flag"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"os"
 	"time"
+
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	"github.com/go-logr/logr"
 
