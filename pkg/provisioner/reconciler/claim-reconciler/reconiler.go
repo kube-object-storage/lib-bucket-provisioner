@@ -165,7 +165,6 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	bucketName, err := util.ComposeBucketName(obc)
 	if err != nil {
 		return fmt.Errorf("error composing bucket name: %v", err)
-
 	}
 
 	class, err := util.StorageClassForClaim(obc, r.InternalClient)
@@ -194,6 +193,8 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 
 	util.SetObjectBucketName(ob, key)
+	ob.Spec.StorageClassName = obc.Spec.StorageClassName
+
 	if ob, err = r.createObjectBucket(ob); err != nil {
 		return err
 	}
