@@ -207,7 +207,9 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
-	if err = util.UpdateClaimWithBucket(obc, ob.Name, r.InternalClient); err != nil {
+	obc.Spec.ObjectBucketName = ob.Name
+	obc.Spec.BucketName = bucketName
+	if err = util.UpdateClaim(obc, r.InternalClient); err != nil {
 		return err
 	}
 

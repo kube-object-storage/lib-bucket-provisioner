@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"k8s.io/client-go/tools/reference"
-
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 
@@ -30,8 +28,8 @@ const (
 	DefaultRetryBaseInterval = time.Second * 10
 	DefaultRetryTimeout      = time.Second * 360
 
-	DebugInfoLvl = 0
-	DebugLogLvl  = 1
+	DebugInfoLvl = 1
+	DebugLogLvl  = 2
 
 	DomainPrefix = "objectbucket.io"
 
@@ -205,19 +203,15 @@ func RemoveFinalizer(obj metav1.Object, c *internal.InternalClient) error {
 	return nil
 }
 
-func UpdateClaimWithBucket(obc *v1alpha1.ObjectBucketClaim, name string, c *internal.InternalClient) error {
-	obc.Spec.ObjectBucketName = name
+func UpdateClaim(obc *v1alpha1.ObjectBucketClaim, c *internal.InternalClient) error {
+	klog.V(DebugLogLvl).Info("updating claim %s/%s: bucketName=%s;objectBucketName=%s", obc.Namespace, obc.Name, obc.Spec.BucketName, obc.Spec.ObjectBucketName)
 	err := c.Client.Update(c.Ctx, obc)
 	if err != nil {
-		return fmt.Errorf("error adding OB name to OBC: %v", err)
+		if errors.IsNotFound(err) {
+			return err
+		} else {
+			return fmt.Errorf("error updating OBC: %v", err)
+		}
 	}
 	return nil
-}
-
-func ClaimRefForClaim(obc *v1alpha1.ObjectBucketClaim, c internal.InternalClient) (*corev1.ObjectReference, error) {
-	ref, err := reference.GetReference(c.Scheme, obc)
-	if err != nil {
-		return nil, fmt.Errorf("error getting claimref: %v", err)
-	}
-	return ref, nil
 }
