@@ -60,6 +60,9 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			Name:       obc.Name,
 			Namespace:  obc.Namespace,
 			Finalizers: []string{Finalizer},
+			OwnerReferences: []metav1.OwnerReference{
+				OwnerRefForClaim(obc),
+			},
 		},
 		Data: map[string]string{
 			BucketName:      obc.Spec.BucketName,
@@ -89,10 +92,13 @@ func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 			Name:       obc.Name,
 			Namespace:  obc.Namespace,
 			Finalizers: []string{Finalizer},
+			OwnerReferences: []metav1.OwnerReference{
+				OwnerRefForClaim(obc),
+			},
 		},
+		StringData: auth.ToMap(),
 	}
 
-	secret.StringData = auth.ToMap()
 	return secret, nil
 }
 
@@ -214,4 +220,16 @@ func UpdateClaim(obc *v1alpha1.ObjectBucketClaim, c *internal.InternalClient) er
 		}
 	}
 	return nil
+}
+
+func OwnerRefForClaim(obc *v1alpha1.ObjectBucketClaim) metav1.OwnerReference {
+	no := false
+	return metav1.OwnerReference{
+		APIVersion:         obc.APIVersion,
+		Kind:               obc.Kind,
+		Name:               obc.Name,
+		UID:                obc.UID,
+		Controller:         &no,
+		BlockOwnerDeletion: &no,
+	}
 }
