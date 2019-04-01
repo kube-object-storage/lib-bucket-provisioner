@@ -121,7 +121,7 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client, interval, ti
 const ObjectBucketNameFormat = "obc-%s-%s"
 
 func SetObjectBucketName(ob *v1alpha1.ObjectBucket, key client.ObjectKey) {
-	ob.Name = fmt.Sprintf(ObjectBucketNameFormat, key.Namespace, key.Namespace)
+	ob.Name = fmt.Sprintf(ObjectBucketNameFormat, key.Namespace, key.Name)
 }
 
 const (
