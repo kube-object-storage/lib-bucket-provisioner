@@ -179,7 +179,6 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 
 	options := &api.BucketOptions{
 		ReclaimPolicy:     class.ReclaimPolicy,
-		ObjectBucketName:  fmt.Sprintf("obc-%s-%s", obc.Namespace, obc.Name),
 		BucketName:        bucketName,
 		ObjectBucketClaim: obc.DeepCopy(),
 		Parameters:        class.Parameters,
@@ -194,6 +193,7 @@ func (r *objectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return fmt.Errorf("provisioner returned nil/empty object bucket")
 	}
 
+	util.SetObjectBucketName(ob, key)
 	if ob, err = r.createObjectBucket(ob); err != nil {
 		return err
 	}

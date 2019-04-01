@@ -97,8 +97,6 @@ func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 	return secret, nil
 }
 
-const ObjectBucketNameFormat = "obc-%s-%s"
-
 func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client, interval, timeout time.Duration) error {
 
 	if c == nil {
@@ -118,6 +116,12 @@ func CreateUntilDefaultTimeout(obj runtime.Object, c client.Client, interval, ti
 		}
 		return true, nil
 	})
+}
+
+const ObjectBucketNameFormat = "obc-%s-%s"
+
+func SetObjectBucketName(ob *v1alpha1.ObjectBucket, key client.ObjectKey) {
+	ob.Name = fmt.Sprintf(ObjectBucketNameFormat, key.Namespace, key.Namespace)
 }
 
 const (
