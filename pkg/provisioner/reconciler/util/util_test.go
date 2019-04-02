@@ -295,7 +295,7 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CreateUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient); (err != nil) != tt.wantErr {
+			if err := CreateUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient, 1, 1); (err != nil) != tt.wantErr {
 				t.Errorf("CreateUntilDefaultTimeout() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -378,24 +378,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 		want    *corev1.ConfigMap
 		wantErr bool
 	}{
-		{
-			name: "nil OBC",
-			args: args{
-				ep:  &v1alpha1.Endpoint{},
-				obc: nil,
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "nil Endpoint",
-			args: args{
-				ep:  nil,
-				obc: &v1alpha1.ObjectBucketClaim{},
-			},
-			want:    nil,
-			wantErr: true,
-		},
 		{
 			name: "endpoint with region and subregion",
 			args: args{
@@ -495,50 +477,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "with no bucket defined",
-			args: args{
-				ep: &v1alpha1.Endpoint{
-					BucketHost: host,
-					BucketPort: port,
-					BucketName: "",
-					Region:     region,
-					SubRegion:  subRegion,
-					SSL:        !ssl,
-				},
-				obc: &v1alpha1.ObjectBucketClaim{
-					ObjectMeta: objMeta,
-					Spec: v1alpha1.ObjectBucketClaimSpec{
-						BucketName: name,
-						SSL:        !ssl,
-					},
-				},
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "with no host defined",
-			args: args{
-				ep: &v1alpha1.Endpoint{
-					BucketHost: "",
-					BucketPort: port,
-					BucketName: name,
-					Region:     region,
-					SubRegion:  subRegion,
-					SSL:        !ssl,
-				},
-				obc: &v1alpha1.ObjectBucketClaim{
-					ObjectMeta: objMeta,
-					Spec: v1alpha1.ObjectBucketClaimSpec{
-						BucketName: name,
-						SSL:        !ssl,
-					},
-				},
-			},
-			want:    nil,
-			wantErr: true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -555,68 +493,110 @@ func TestNewBucketConfigMap(t *testing.T) {
 	}
 }
 
-func TestNewObjectBucket(t *testing.T) {
-
-	const objName, objNamespace = "test-name", "test-namespace"
-
-	type args struct {
-		obc        *v1alpha1.ObjectBucketClaim
-		connection *v1alpha1.Connection
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    *v1alpha1.ObjectBucket
-		wantErr bool
-	}{
-		{
-			name: "catch nil inputs",
-			args: args{
-				obc:        nil,
-				connection: nil,
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "expected output",
-			args: args{
-				obc: &v1alpha1.ObjectBucketClaim{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-name",
-						Namespace: "test-namespace",
-					},
-					Spec: v1alpha1.ObjectBucketClaimSpec{},
-				},
-				connection: &v1alpha1.Connection{
-					Endpoint:       nil,
-					Authentication: nil,
-				},
-			},
-			want: &v1alpha1.ObjectBucket{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf(ObjectBucketFormat, objNamespace, objName),
-				},
-				Spec: v1alpha1.ObjectBucketSpec{
-					Connection: &v1alpha1.Connection{},
-				},
-			},
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewObjectBucket(tt.args.obc, tt.args.connection)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewObjectBucket() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewObjectBucket() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
+// should be implemented as an E2E test
+//func TestNewObjectBucket(t *testing.T) {
+//
+// 	const (
+// 		testns       = "test-namespace"
+// 		testname     = "test-name"
+// 		objName      = testname
+// 		objNamespace = testns
+// 		className    = "dummyClass"
+// 		bucketName   = "testbucket"
+// 	)
+//
+// 	selfLink := fmt.Sprintf("/apis/objectbucket.io/v1alpha1/namespaces/%s/objectbucketclaims/%s", testns, testname)
+//
+// 	deletePolicy := corev1.PersistentVolumeReclaimDelete
+//
+// 	class := &storagev1.StorageClass{
+// 		ObjectMeta: metav1.ObjectMeta{
+// 			Name: className,
+// 		},
+// 		Provisioner:   "dummyProvisioner",
+// 		ReclaimPolicy: &deletePolicy,
+// 	}
+//
+// 	type args struct {
+// 		obc        *v1alpha1.ObjectBucketClaim
+// 		connection *v1alpha1.Connection
+// 		scheme     *runtime.Scheme
+// 		ctx        context.Context
+// 		client     client.Client
+// 	}
+// 	tests := []struct {
+// 		name    string
+// 		args    args
+// 		want    *v1alpha1.ObjectBucket
+// 		wantErr bool
+// 	}{
+// 		{
+// 			name: "expected output",
+// 			args: args{
+// 				obc: &v1alpha1.ObjectBucketClaim{
+// 					ObjectMeta: metav1.ObjectMeta{
+// 						Name:      testname,
+// 						Namespace: testns,
+// 						SelfLink:  selfLink,
+// 					},
+// 					Spec: v1alpha1.ObjectBucketClaimSpec{
+// 						StorageClassName: className,
+// 						BucketName:       bucketName,
+// 					},
+// 				},
+// 				connection: &v1alpha1.Connection{
+// 					Endpoint:       nil,
+// 					Authentication: nil,
+// 				},
+// 				scheme: runtime.NewScheme(),
+// 				ctx:    context.Background(),
+// 			},
+// 			want: &v1alpha1.ObjectBucket{
+// 				ObjectMeta: metav1.ObjectMeta{
+// 					Name: fmt.Sprintf(ObjectBucketFormat, objNamespace, objName),
+// 				},
+// 				Spec: v1alpha1.ObjectBucketSpec{
+// 					StorageClassName: className,
+// 					ReclaimPolicy:    &deletePolicy,
+// 					ClaimRef: &corev1.ObjectReference{
+// 						Kind:            "ObjectBucketClaim",
+// 						Namespace:       testns,
+// 						Name:            testname,
+// 						UID:             "",
+// 						APIVersion:      "objectbucket.io/v1alpha1",
+// 					},
+// 					Connection: nil,
+// 				},
+// 			},
+// 			wantErr: false,
+// 		},
+// 	}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+//
+// 			tt.args.client = BuildFakeClient(t, tt.args.obc)
+//
+// 			err := tt.args.client.Create(tt.args.ctx, class)
+// 			if err != nil {
+// 				t.Error(err)
+// 			}
+//
+// 			err = v1alpha1.AddToScheme(tt.args.scheme)
+// 			if err != nil {
+// 				t.Error(err)
+// 			}
+//
+// 			got, err := NewObjectBucket(tt.args.obc, tt.args.connection, tt.args.client, tt.args.ctx, tt.args.scheme)
+// 			if (err != nil) != tt.wantErr {
+// 				t.Errorf("NewObjectBucket() error = %v, wantErr %v", err, tt.wantErr)
+// 				return
+// 			}
+// 			if !reflect.DeepEqual(got, tt.want) {
+// 				t.Errorf("NewObjectBucket() = %v, want %v", got, tt.want)
+// 			}
+// 		})
+// 	}
+// }
 
 func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient client.Client) {
 

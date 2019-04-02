@@ -20,8 +20,8 @@ imports(){
   (
     cd "${REPO_ROOT}"
     # Call goimport for each sub package
-    echo "goimports -w -local $LOCAL_IMPORT for packages under $p"
     for sp in ${SUB_PACKAGES}; do
+      echo "goimports -w -local $LOCAL_IMPORT for packages under $sp"
       goimports -w -local "$LOCAL_IMPORT" "$sp"
     done
   )
@@ -93,6 +93,7 @@ help(){
   For example, to vet and gofmt/imports, run:
   $ ./go.sh vet imports
 '
+  printf "%s" "${msg}"
 }
 
 main(){
@@ -122,7 +123,7 @@ main(){
       preflight
       exit
       ;;
-    "help")
+    "help"|'h')
       help
       exit
       ;;
