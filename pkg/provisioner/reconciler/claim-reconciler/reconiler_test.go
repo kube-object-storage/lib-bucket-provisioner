@@ -8,20 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"k8s.io/klog/klogr"
-
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	"k8s.io/apimachinery/pkg/runtime"
-
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
-
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/klogr"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
@@ -43,7 +37,7 @@ var objMeta = metav1.ObjectMeta{
 
 var (
 	testLogI = klogr.New()
-	testLogD = klogr.New().V(util.DebugLogLvl)
+	testLogD = klogr.New().V(1)
 )
 
 // test global provisioner fields
@@ -61,7 +55,7 @@ var testFields = fields{
 	ctx:             context.TODO(),
 	internalClient:  nil, // generated per iteration
 	provisionerName: provisionerName,
-	provisioner:     &util.FakeProvisioner{},
+	provisioner:     &internal.FakeProvisioner{},
 	retryInterval:   1,
 	retryTimeout:    1,
 	retryBackoff:    1,
@@ -112,7 +106,7 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 			args: args{
 				c:           nil,
 				name:        provisionerName,
-				provisioner: &util.FakeProvisioner{},
+				provisioner: &internal.FakeProvisioner{},
 				options: Options{
 					RetryInterval: 0,
 					RetryTimeout:  0,
@@ -120,9 +114,9 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 			},
 			want: &objectBucketClaimReconciler{
 				provisionerName: strings.ToLower(provisionerName),
-				provisioner:     &util.FakeProvisioner{},
-				retryInterval:   util.DefaultRetryBaseInterval,
-				retryTimeout:    util.DefaultRetryTimeout,
+				provisioner:     &internal.FakeProvisioner{},
+				retryInterval:   internal.DefaultRetryBaseInterval,
+				retryTimeout:    internal.DefaultRetryTimeout,
 			},
 		},
 		{
@@ -130,7 +124,7 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 			args: args{
 				c:           nil,
 				name:        provisionerName,
-				provisioner: &util.FakeProvisioner{},
+				provisioner: &internal.FakeProvisioner{},
 				options: Options{
 					RetryInterval: retryInt,
 					RetryTimeout:  retryTO,
@@ -138,7 +132,7 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 			},
 			want: &objectBucketClaimReconciler{
 				provisionerName: strings.ToLower(provisionerName),
-				provisioner:     &util.FakeProvisioner{},
+				provisioner:     &internal.FakeProvisioner{},
 				retryInterval:   retryInt,
 				retryTimeout:    retryTO,
 			},
@@ -156,10 +150,10 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 
 			// If the options value does not equal the set value, and the set value was not defaulted to
 			// then something has gone wrong.
-			if tt.args.options.RetryTimeout != tt.want.retryTimeout && tt.want.retryTimeout != util.DefaultRetryTimeout {
+			if tt.args.options.RetryTimeout != tt.want.retryTimeout && tt.want.retryTimeout != internal.DefaultRetryTimeout {
 				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() RetryTimeout = %v, want %v", got.retryTimeout, tt.want.retryTimeout)
 			}
-			if tt.args.options.RetryInterval != tt.want.retryInterval && tt.want.retryInterval != util.DefaultRetryBaseInterval {
+			if tt.args.options.RetryInterval != tt.want.retryInterval && tt.want.retryInterval != internal.DefaultRetryBaseInterval {
 				t.Errorf("objectBucketClaimReconciler.NewObjectBucketClaimReconciler() RetryInterval = %v, want %v", got.retryInterval, tt.want.retryInterval)
 			}
 		})
@@ -214,8 +208,6 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 				provisioner:     tt.fields.provisioner,
 				retryInterval:   tt.fields.retryInterval,
 				retryTimeout:    tt.fields.retryTimeout,
-				logD:            testLogD,
-				logI:            testLogI,
 			}
 			if got := r.shouldProvision(tt.args.obc); got != tt.want {
 				t.Errorf("objectBucketClaimReconciler.shouldProvision() = %v, want %v", got, tt.want)
@@ -281,8 +273,6 @@ func Test_objectBucketClaimReconciler_claimFromKey(t *testing.T) {
 				provisioner:     tt.fields.provisioner,
 				retryInterval:   tt.fields.retryInterval,
 				retryTimeout:    tt.fields.retryTimeout,
-				logD:            nil,
-				logI:            nil,
 			}
 			got, err := r.claimForKey(tt.args.key)
 			if (err != nil) != tt.wantErr {
