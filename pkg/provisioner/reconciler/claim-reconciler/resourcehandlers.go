@@ -1,8 +1,9 @@
-package reconciler_internal
+package reconciler
 
 import (
 	"context"
 	"fmt"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 	"path"
 	"strconv"
 	"time"
@@ -17,10 +18,27 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
-// NewBucketConfigMap constructs a config map from a given endpoint and ObjectBucketClaim
+const (
+	DefaultRetryBaseInterval = time.Second * 3
+	DefaultRetryTimeout      = time.Second * 30
+
+	BucketName      = "BUCKET_NAME"
+	BucketHost      = "BUCKET_HOST"
+	BucketPort      = "BUCKET_PORT"
+	BucketRegion    = "BUCKET_REGION"
+	BucketSubRegion = "BUCKET_SUBREGION"
+	BucketURL       = "BUCKET_URL"
+	BucketSSL       = "BUCKET_SSL"
+
+	Finalizer = api.Domain + "/finalizer"
+
+	ObjectBucketNameFormat = "obc-%s-%s"
+)
+
+// newBucketConfigMap constructs a config map from a given endpoint and ObjectBucketClaim
 // As a quality of life addition, it constructs a full URL for the bucket path.
 // Success is constrained by a defined Bucket name and Bucket host.
-func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*corev1.ConfigMap, error) {
+func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*corev1.ConfigMap, error) {
 	logD.Info("defining new configMap", "for claim", obc.Namespace+"/"+obc.Name)
 	if ep == nil {
 		return nil, fmt.Errorf("cannot construct configMap, got nil Endpoint")
@@ -49,7 +67,7 @@ func NewBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 
 // NewCredentailsSecret returns a secret with data appropriate to the supported authenticaion method.
 // Even if the values for the Authentication keys are empty, we generate the secret.
-func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*corev1.Secret, error) {
+func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*corev1.Secret, error) {
 
 	if obc == nil {
 		return nil, fmt.Errorf("ObjectBucketClaim required to generate secret")
@@ -70,50 +88,50 @@ func NewCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 	return secret, nil
 }
 
-func CreateObjectBucket(ob *v1alpha1.ObjectBucket, c client.Client, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucket, error) {
+func createObjectBucket(ob *v1alpha1.ObjectBucket, c client.Client, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucket, error) {
 	logD.Info("creating ObjectBucket", "name", ob.Name)
-	if err := CreateUntilDefaultTimeout(ob, c, retryInterval, retryTimeout); err != nil {
+	if err := createUntilDefaultTimeout(ob, c, retryInterval, retryTimeout); err != nil {
 		return nil, err
 	}
 	return ob, nil
 }
 
-func CreateSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, c client.Client, retryInterval, retryTimeout time.Duration) (*v1.Secret, error) {
-	secret, err := NewCredentialsSecret(obc, auth)
+func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, c client.Client, retryInterval, retryTimeout time.Duration) (*v1.Secret, error) {
+	secret, err := newCredentialsSecret(obc, auth)
 	if err != nil {
 		return nil, err
 	}
 
 	logD.Info("creating Secret", "namespace", secret.Namespace, "name", secret.Name)
-	if err = CreateUntilDefaultTimeout(secret, c, retryInterval, retryTimeout); err != nil {
+	if err = createUntilDefaultTimeout(secret, c, retryInterval, retryTimeout); err != nil {
 		return nil, fmt.Errorf("unable to create Secret %q: %v", secret.Name, err)
 	}
 	return secret, nil
 }
 
-func CreateConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c client.Client, retryInterval, retryTimeout time.Duration) (*v1.ConfigMap, error) {
-	configMap, err := NewBucketConfigMap(ep, obc)
+func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c client.Client, retryInterval, retryTimeout time.Duration) (*v1.ConfigMap, error) {
+	configMap, err := newBucketConfigMap(ep, obc)
 	if err != nil {
 		return nil, nil
 	}
 
 	logD.Info("creating configMap", "namespace", configMap.Namespace, "name", configMap.Name)
-	err = CreateUntilDefaultTimeout(configMap, c, retryInterval, retryTimeout)
+	err = createUntilDefaultTimeout(configMap, c, retryInterval, retryTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create configMap %q for claim %v: %v", configMap.Name, configMap.Name, err)
 	}
 	return configMap, nil
 }
 
-func DeleteConfigMap(cm *v1.ConfigMap, ic *InternalClient) error {
+func deleteConfigMap(cm *v1.ConfigMap, ic *internalClient) error {
 	if cm == nil {
 		log.Info("got nil configMap pointer, skipping delete")
 		return nil
 	}
-	if HasFinalizer(cm) {
+	if hasFinalizer(cm) {
 		logD.Info("removing finalizer from configMap", "name", cm.Name)
 
-		err := RemoveFinalizer(cm, ic)
+		err := removeFinalizer(cm, ic)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				log.Error(err, "configMap vanished before we could remove the finalizer, assuming deleted")
@@ -137,15 +155,15 @@ func DeleteConfigMap(cm *v1.ConfigMap, ic *InternalClient) error {
 	return nil
 }
 
-func DeleteSecret(sec *v1.Secret, ic *InternalClient) error {
+func deleteSecret(sec *v1.Secret, ic *internalClient) error {
 	if sec == nil {
 		log.Info("got nil secret, skipping")
 		return nil
 	}
-	if HasFinalizer(sec) {
+	if hasFinalizer(sec) {
 		logD.Info("removing finalizer from Secret", "name", sec.Namespace+"/"+sec.Name)
 
-		err := RemoveFinalizer(sec, ic)
+		err := removeFinalizer(sec, ic)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				log.Error(err, "secret vanished before we could remove the finalizer, assuming deleted")
@@ -169,14 +187,14 @@ func DeleteSecret(sec *v1.Secret, ic *InternalClient) error {
 	return nil
 }
 
-func DeleteObjectBucket(ob *v1alpha1.ObjectBucket, ic *InternalClient) error {
+func deleteObjectBucket(ob *v1alpha1.ObjectBucket, ic *internalClient) error {
 	if ob == nil {
 		log.Error(fmt.Errorf("got nil objectBucket, skipping"), "")
 		return nil
 	}
 	logD.Info("deleting ObjectBucket", "name", ob.Name)
-	if HasFinalizer(ob) {
-		err := RemoveFinalizer(ob, ic)
+	if hasFinalizer(ob) {
+		err := removeFinalizer(ob, ic)
 		if err != nil {
 			if errors.IsNotFound(err) {
 				log.Info("ObjectBucket %v vanished before we could remove the finalizer, assuming deleted")

@@ -1,4 +1,4 @@
-package reconciler_internal
+package reconciler
 
 import (
 	"context"
@@ -39,7 +39,7 @@ func TestStorageClassForClaim(t *testing.T) {
 
 	type args struct {
 		obc    *v1alpha1.ObjectBucketClaim
-		client *InternalClient
+		client *internalClient
 	}
 
 	tests := []struct {
@@ -119,7 +119,7 @@ func TestStorageClassForClaim(t *testing.T) {
 				}
 			}
 
-			got, err := StorageClassForClaim(tt.args.obc, tt.args.client)
+			got, err := storageClassForClaim(tt.args.obc, tt.args.client)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("StorageClassForClaim() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -224,7 +224,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewCredentialsSecret(tt.args.obc, tt.args.authentication)
+			got, err := newCredentialsSecret(tt.args.obc, tt.args.authentication)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewCredentailsSecret() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -247,7 +247,7 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 
 	type args struct {
 		obj        runtime.Object
-		fakeClient *InternalClient
+		fakeClient *internalClient
 	}
 
 	tests := []struct {
@@ -294,7 +294,7 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CreateUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient.Client, 1, 1); (err != nil) != tt.wantErr {
+			if err := createUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient.Client, 1, 1); (err != nil) != tt.wantErr {
 				t.Errorf("CreateUntilDefaultTimeout() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -480,13 +480,13 @@ func TestNewBucketConfigMap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			got, err := NewBucketConfigMap(tt.args.ep, tt.args.obc)
+			got, err := newBucketConfigMap(tt.args.ep, tt.args.obc)
 			if (err != nil) == !tt.wantErr {
-				t.Errorf("NewBucketConfigMap() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("newBucketConfigMap() error = %v, wantErr %v", err, tt.wantErr)
 			} else if !reflect.DeepEqual(got, tt.want) {
 				gotjson, _ := json.MarshalIndent(got, "", "\t")
 				wantjson, _ := json.MarshalIndent(tt.want, "", "\t")
-				t.Errorf("NewBucketConfigMap() = %v, want %v", string(gotjson), string(wantjson))
+				t.Errorf("newBucketConfigMap() = %v, want %v", string(gotjson), string(wantjson))
 			}
 		})
 	}
@@ -596,21 +596,3 @@ func TestNewBucketConfigMap(t *testing.T) {
 // 		})
 // 	}
 // }
-
-func BuildFakeInternalClient(t *testing.T, initObjs ...runtime.Object) *InternalClient {
-	scheme := runtime.NewScheme()
-	if err := corev1.AddToScheme(scheme); err != nil {
-		t.Errorf("error adding core/v1 scheme: %v", err)
-	}
-	if err := storagev1.AddToScheme(scheme); err != nil {
-		t.Errorf("error adding storage/v1 scheme: %v", err)
-	}
-	if err := v1alpha1.AddToScheme(scheme); err != nil {
-		t.Errorf("error adding storage/v1 scheme: %v", err)
-	}
-	return &InternalClient{
-		Ctx:    context.Background(),
-		Client: fake.NewFakeClientWithScheme(scheme, initObjs...),
-		Scheme: scheme,
-	}
-}
