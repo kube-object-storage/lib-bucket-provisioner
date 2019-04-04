@@ -113,9 +113,9 @@ If the reclaim policy is "Erase" then the provisioner's `Erase` method is called
 
 For brownfield buckets, when an OBC is deleted, the provisioner's `Revoke` method is called.
 The provisioner decides whether or not to recognize the reclaimPolicy.
-It is anticipated that most provisioners will chose to ignore the reclaimPolicy and simply cleanup up credentials, users, etc.
+It is anticipated that most provisioners will choose to ignore the reclaimPolicy and simply cleanup up credentials, users, etc.
 
-In all delete cases store-specific clean up, such as deleting credentials, detach, archive, etc. can be performed by any of the delete related methods.
+In all delete cases, store-specific clean up such as deleting credentials, detach, archive, etc. can be performed, at the discretion of the provisioner, by any of the delete related methods.
 In all delete cases, the library attempts to delete _all_ generated Kubernetes artifacts: OB, Secret, and ConfigMap.
 
 
@@ -160,7 +160,7 @@ Until then, Resource Quotas cannot yet be defined for CRDs and, thus, there is n
 ### Watches
 
 #### OBC Watches
-All provisioners importing the bucket library watch all OBCs across all namespaces.
+Provisioners importing the bucket library watch all OBCs across a designated namespace or across all namespaces.
 OBCs that match the provisioner are further processed and OBCs not matching are quickly skipped.
 
 The OBC watch performs the following:
@@ -292,7 +292,7 @@ data:
 1. finalizers set and cleared by the lib's OBC controller. Prevents accidental deletion of the Secret.
 1. ownerReference makes this secret a child of the originating OBC for clean up purposes.
 1. ACCESS_KEY_ID and SECRET_ACCESS_KEY are the only secret keys defined by the library.
-Provisioners are able to cause the lib to create additional keys by returning  the `AdditionalConfig` field.
+Provisioners are able to cause the lib to create additional keys by returning  the `AdditionalSecretConfig` field.
 **Note:** the library will create the Secret using `stringData:` and let the Secret API base64 encode the values.
 Eg: 
 ```
@@ -332,7 +332,7 @@ data:
 1. host port.
 1. unique bucket name.
 1. the above data keys are defined by the library.
-Provisioners are able to cause the lib to create additional data keys by returning the `AdditionalConfig` field.
+Provisioners are able to cause the lib to create additional data keys by returning the `AdditionalConfigData` field.
 
 ### App Pod (independent of provisioner)
 ```yaml
@@ -407,7 +407,7 @@ reclaimPolicy: Delete [5]
 1. **all** parameter keys and values are specific to a provisioner, are optional, and are not validated by the StorageClass API.
 Fields to consider are object-store endpoint, version, possibly a secretRef containing info about credential for new bucket owners, etc.
 1. bucketName is required for access to existing buckets.
-Unlike greenfield provisioning, the brownfield bucket name appears in the storge class, not the OBC.
+Unlike greenfield provisioning, the brownfield bucket name appears in the storage class, not the OBC.
 1. each provisioner decides how to treat the _reclaimPolicy_ when an OBC is deleted. Supported values are:
 + _Delete_ = (typically) physically delete the bucket.
 Depending on new vs. existing bucket, the provisioner's `Delete` or `Revoke` methods are called.
