@@ -15,8 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -33,7 +31,7 @@ func TestStorageClassForClaim(t *testing.T) {
 		Name:      "testname",
 		Namespace: "testnamespace",
 		Finalizers: []string{
-			Finalizer,
+			finalizer,
 		},
 	}
 
@@ -52,7 +50,7 @@ func TestStorageClassForClaim(t *testing.T) {
 			name: "nil OBC ptr",
 			args: args{
 				obc:    nil,
-				client: BuildFakeInternalClient(t),
+				client: buildFakeInternalClient(t),
 			},
 			want:    nil,
 			wantErr: true,
@@ -66,7 +64,7 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: "",
 					},
 				},
-				client: BuildFakeInternalClient(t),
+				client: buildFakeInternalClient(t),
 			},
 			want:    nil,
 			wantErr: true,
@@ -79,7 +77,7 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: storageClassName,
 					},
 				},
-				client: BuildFakeInternalClient(t),
+				client: buildFakeInternalClient(t),
 			},
 			want: &storagev1.StorageClass{
 				TypeMeta: metav1.TypeMeta{},
@@ -98,7 +96,7 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: storageClassName,
 					},
 				},
-				client: BuildFakeInternalClient(t),
+				client: buildFakeInternalClient(t),
 			},
 			want:    nil,
 			wantErr: true,
@@ -133,17 +131,19 @@ func TestStorageClassForClaim(t *testing.T) {
 
 func TestNewCredentialsSecret(t *testing.T) {
 	const (
-		obcName      = "obc-testname"
-		obcNamespace = "obc-testnamespace"
-		authKey      = "test-auth-key"
-		authSecret   = "test-auth-secret"
+		obcName        = "obc-testname"
+		obcNamespace   = "obc-testnamespace"
+		authKey        = "test-auth-key"
+		authSecret     = "test-auth-secret"
+		awsKeyField    = "ACCESS_KEY_ID"
+		awsSecretField = "SECRET_KEY_ID"
 	)
 
 	testObjectMeta := metav1.ObjectMeta{
 		Name:      obcName,
 		Namespace: obcNamespace,
 		Finalizers: []string{
-			Finalizer,
+			finalizer,
 		},
 	}
 
@@ -184,7 +184,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 				},
 				authentication: &v1alpha1.Authentication{
 					AccessKeys: &v1alpha1.AccessKeys{
-						AccessKeyId:     authKey,
+						AccessKeyID:     authKey,
 						SecretAccessKey: authSecret,
 					},
 				},
@@ -192,8 +192,8 @@ func TestNewCredentialsSecret(t *testing.T) {
 			want: &corev1.Secret{
 				ObjectMeta: testObjectMeta,
 				StringData: map[string]string{
-					v1alpha1.AwsKeyField:    authKey,
-					v1alpha1.AwsSecretField: authSecret,
+					awsKeyField:    authKey,
+					awsSecretField: authSecret,
 				},
 			},
 			wantErr: false,
@@ -206,7 +206,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 				},
 				authentication: &v1alpha1.Authentication{
 					AccessKeys: &v1alpha1.AccessKeys{
-						AccessKeyId:     "",
+						AccessKeyID:     "",
 						SecretAccessKey: "",
 					},
 				},
@@ -214,8 +214,8 @@ func TestNewCredentialsSecret(t *testing.T) {
 			want: &corev1.Secret{
 				ObjectMeta: testObjectMeta,
 				StringData: map[string]string{
-					v1alpha1.AwsKeyField:    "",
-					v1alpha1.AwsSecretField: "",
+					awsKeyField:    "",
+					awsSecretField: "",
 				},
 			},
 			wantErr: false,
@@ -238,7 +238,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 
 func TestCreateUntilDefaultTimeout(t *testing.T) {
 
-	fakeClient := BuildFakeInternalClient(t)
+	fakeClient := buildFakeInternalClient(t)
 
 	objMeta := metav1.ObjectMeta{
 		Namespace: "testNamespace",
@@ -364,7 +364,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 	objMeta := metav1.ObjectMeta{
 		Name:       "test-obc",
 		Namespace:  "test-obc-namespace",
-		Finalizers: []string{Finalizer},
+		Finalizers: []string{finalizer},
 	}
 
 	type args struct {
@@ -399,13 +399,13 @@ func TestNewBucketConfigMap(t *testing.T) {
 			want: &corev1.ConfigMap{
 				ObjectMeta: objMeta,
 				Data: map[string]string{
-					BucketName:      name,
-					BucketHost:      host,
-					BucketPort:      strconv.Itoa(port),
-					BucketSSL:       strconv.FormatBool(ssl),
-					BucketRegion:    region,
-					BucketSubRegion: subRegion,
-					BucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
+					bucketName:      name,
+					bucketHost:      host,
+					bucketPort:      strconv.Itoa(port),
+					bucketSSL:       strconv.FormatBool(ssl),
+					bucketRegion:    region,
+					bucketSubRegion: subRegion,
+					bucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
 				},
 			},
 			wantErr: false,
@@ -432,13 +432,13 @@ func TestNewBucketConfigMap(t *testing.T) {
 			want: &corev1.ConfigMap{
 				ObjectMeta: objMeta,
 				Data: map[string]string{
-					BucketName:      name,
-					BucketHost:      host,
-					BucketPort:      strconv.Itoa(port),
-					BucketSSL:       strconv.FormatBool(ssl),
-					BucketRegion:    region,
-					BucketSubRegion: "",
-					BucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, name)),
+					bucketName:      name,
+					bucketHost:      host,
+					bucketPort:      strconv.Itoa(port),
+					bucketSSL:       strconv.FormatBool(ssl),
+					bucketRegion:    region,
+					bucketSubRegion: "",
+					bucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, name)),
 				},
 			},
 			wantErr: false,
@@ -465,13 +465,13 @@ func TestNewBucketConfigMap(t *testing.T) {
 			want: &corev1.ConfigMap{
 				ObjectMeta: objMeta,
 				Data: map[string]string{
-					BucketName:      name,
-					BucketHost:      host,
-					BucketPort:      strconv.Itoa(port),
-					BucketSSL:       strconv.FormatBool(!ssl),
-					BucketRegion:    region,
-					BucketSubRegion: subRegion,
-					BucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
+					bucketName:      name,
+					bucketHost:      host,
+					bucketPort:      strconv.Itoa(port),
+					bucketSSL:       strconv.FormatBool(!ssl),
+					bucketRegion:    region,
+					bucketSubRegion: subRegion,
+					bucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
 				},
 			},
 			wantErr: false,
@@ -573,7 +573,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 // 	for _, tt := range tests {
 // 		t.Run(tt.name, func(t *testing.T) {
 //
-// 			tt.args.client = BuildFakeInternalClient(t, tt.args.obc)
+// 			tt.args.client = buildFakeInternalClient(t, tt.args.obc)
 //
 // 			err := tt.args.client.Create(tt.args.ctx, class)
 // 			if err != nil {

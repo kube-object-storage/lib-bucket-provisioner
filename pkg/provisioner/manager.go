@@ -3,8 +3,6 @@ package provisioner
 import (
 	"flag"
 	"fmt"
-	"time"
-
 	"github.com/go-logr/logr"
 	"k8s.io/klog"
 
@@ -25,25 +23,13 @@ import (
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/claim-reconciler"
 )
 
-// ProvisionerController is the first iteration of our internal provisioning
+// Controller is the first iteration of our internal provisioning
 // controller.  The passed-in bucket provisioner, coded by the user of the
 // library, is stored for later Provision and Delete calls.
-type ProvisionerController struct {
+type Controller struct {
 	Manager     manager.Manager
 	Name        string
 	Provisioner api.Provisioner
-}
-
-type Config struct {
-	// ProvisionBaseInterval the initial time interval before retrying
-	ProvisionBaseInterval time.Duration
-
-	// ProvisionRetryTimeout the maximum amount of time to attempt bucket provisioning.
-	// Once reached, the claim key is dropped and re-queued
-	ProvisionRetryTimeout time.Duration
-
-	// The namespace to which the provisioner is restricted.  Empty assumes all namespaces
-	Namespace string
 }
 
 var (
@@ -76,18 +62,19 @@ func initFlags() {
 // instantiate a new provisioning controller. This controller will
 // respond to Add / Update / Delete events by calling the passed-in
 // provisioner's Provisioner and Delete methods.
+// The Provisioner will be restrict to operating only to the namespace given
 func NewProvisioner(
 	cfg *rest.Config,
 	provisionerName string,
 	provisioner api.Provisioner,
-	config *Config,
-) (*ProvisionerController, error) {
+	namespace string,
+) (*Controller, error) {
 
 	initFlags()
 	initLoggers()
 
 	log.Info("constructing new Provisioner", "name", provisionerName)
-	ctrl := &ProvisionerController{
+	ctrl := &Controller{
 		Provisioner: provisioner,
 		Name:        provisionerName,
 	}
@@ -98,7 +85,7 @@ func NewProvisioner(
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
 	log.Info("generating controller manager")
-	mgr, err := manager.New(cfg, manager.Options{Namespace: config.Namespace})
+	mgr, err := manager.New(cfg, manager.Options{Namespace: namespace})
 	if err != nil {
 		return nil, fmt.Errorf("error creating new Manager: %v", err)
 	}
@@ -153,7 +140,7 @@ func NewProvisioner(
 }
 
 // Run starts the claim and bucket controllers.
-func (p *ProvisionerController) Run() {
+func (p *Controller) Run() {
 	defer klog.Flush()
 	log.Info("Starting manager", "provisioner", p.Name)
 	go p.Manager.Start(signals.SetupSignalHandler())

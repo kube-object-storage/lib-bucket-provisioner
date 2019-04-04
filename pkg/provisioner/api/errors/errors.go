@@ -4,8 +4,8 @@ import (
 	"fmt"
 )
 
-// BucketExistsErr SHOULD be returned by the Provision() method when bucket creation fails
-// due a name collision in the object store
+// BucketExistsErr SHOULD be returned by the Provision() method when bucket creation fails due a name collision in the
+// object store
 type BucketExistsErr struct {
 	errString string
 }
