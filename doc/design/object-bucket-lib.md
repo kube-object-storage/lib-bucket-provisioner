@@ -27,6 +27,7 @@ As a result, `kubectl` will be easy to use to create, list, and manage buckets a
 + Be unopinionated about the underlying object-store.
 + Give provisioners a simple interface with minimal constraints.
 + Cause the app pod to wait until the target bucket has been created and is accessible.
++ Present similar user and admin experiences for both _greenfield_ (new) and _brownfield_ (existing) bucket provisioning.
 
 ### Non-Goals
 + Update Kubernetes PVC-PV API to support object buckets.
@@ -34,8 +35,7 @@ As a result, `kubectl` will be easy to use to create, list, and manage buckets a
 For example, an app that uses a feature in object-store-1 that is not provided in object-store-2, and the app now is tied to an object-store-2 endpoint.
 
 ### Assumptions
-1. _Brownfield_, meaning existing buckets, is not supported.
-Only **new** dynamic bucket provisioning is addressed by this proposal, thus there is no support for _best-match_ binding, like Kubernetes has for PVs <-> PVCs.
+1. There is no "_best match_" binding between a bucket claim and a bucket resource, even for brownfield use cases. Thus, pre-creating object bucket resources is _not_ necessary for brownfield.
 1. Apps need to be designed for object-store portability.
 Just like there can be portability issues when an app exploits specialized features of a file system, an app accessing buckets, where portability matters, must be designed for that purpose.
 
@@ -47,12 +47,11 @@ The actual creation of physical buckets belongs to each object store provisioner
 The bucket library handles watches on bucket claims and the (generated) bucket objects, reconciles state-of-the-world, creates the artifacts (Secret, ConfigMap) consumed by app pods, and deletes resources generated on behalf of the claim.
 
 An `ObjectBucketClaim` (OBC) is similar in usage to a Persistent Volume Claim and an `ObjectBucket` (OB) is the Persistent Volume equivalent. 
-An OBC is namespaced and references a storage class which defines the object store and provisioner.
-An OB is non-namespaced (global), typically not visible to end users, and will contain info pertinent to the provisioned bucket.
-Like PVs, there is a 1:1 binding of an OBC to an OB.
-Bucket binding refers to the actual bucket being created by the underlying object store provider, and the generation of artifacts which will be consumed by application pods.
-The details of the object store (ceph, minio, cloud, on-prem) are not visible to the app pod.
-The same app can consume AWS S3 in the cloud or Ceph-RGW on-prem with no changes.
+An OBC is namespaced and references a storage class which defines the object store provisioner. The name of the bucket may also defined in the storage class for brownfield uses, removing knowledge of the bucket name (often random) from OBC authors.
+Other provisioner specific fields may appear in the storage class depending on the needs of the provisioner.
+An OB is non-namespaced, typically not visible to end users, and will contain info pertinent to the provisioned bucket.
+Like PVs, there is a 1:1 relationship between an OBC and an OB.
+The details of the object store are not visible to the app pod.
 
 As is true for dynamic PV provisioning, a bucket provisioner needs to be running for each object store supported by the Kubernetes cluster.
 For example, if the underlying object store is AWS S3, the developer will create an OBC, referencing
@@ -61,18 +60,19 @@ The cluster has the S3 provisioner running which is watching (via the bucket lib
 other OBCs are ignored.
 Additionally, the same cluster can have a rook-ceph RGW provisioner running which also watches OBCs (again via the lib).
 Like the S3 proivisioner, it only handles OBCs that it knows how to provision and skips the rest.
-In this proposal, the bucket provisioners will be simple-to-write binaries because the bucket provisioning lib
-handles the bulk of the work.
-Each provisioner is responsible for writing `Provision()`, `Delete()` and `Suspend()` methods and a short `main()` function.
 
-`Provision()`,  `Delete()` and `Suspend()` are interfaces defined in the bucket library.
-To provision a bucket, all provisioners are required to return a _Connection_ struct which is used to construct the ConfigMap and the Secret.
+In this proposal, the bucket provisioners should be simple to write because the bucket provisioning library handles the bulk of the work. For example, the library handles all watches, informers, reconcilation, creation of the OB, ConfigMap, Secert, retry logic and error recovery.
+Each provisioner is responsible for writing `Provision`, `Delete` `Suspend`(TBD) `Erase`(TBD), `Grant`, and `Revoke` methods.
+
+To provision a _new_ bucket, the provisioner's `Provision` method is called by the lib, and to grant access to an existing bucket the provisioner's `Grant` method is called.
+`Provision` and `Grant` return an OB which the library uses to create the Secret and ConfigMap.
 The Secret and ConfigMap have deterministic names, namespaces, and property keys.
+They also have an extra _map[string]string_ list to support provisioner specific endpoint and credential needs.
 An app pod consuming a bucket need only be aware of the Secret name and keys, and the ConfigMap name and fields.
-The app pod will not run until the bucket has been provisioned and can be accessed.
-This is true even if the pod is created prior to the OBC.
+The app pod will not run until the ConfigMap and Secret have been mounted, indicating that the bucket can be accessed.
 
 **Note:** even though the PV-PVC design supports static provisioning, only dynamic provisioning is supported by the bucket lib at this time.
+("Provision" here includes creating a new bucket or wrapping Kubernetes artifacts around an existing bucket.)
 
 ### Alternatives
 A couple of alternative designs were considered before reaching the design described here:
@@ -92,31 +92,41 @@ Another issue was that a decentralized design didn't support a reasonable separa
 **Note:** this alternative in not relevant to Phase-0 of this proposal since there will be no OB controller until a later phase.
 
 ### Binding
+Bucket binding refers to the steps necessary to make the target bucket available to pods.
+For greenfield cases, a new bucket is physically created, whereas for existing buckets this step is skipped.
+In both new and existing bucket use cases Kubernetes resources are created by the library: a secret containing access credentials, a configMap containing bucket endpoint info, and an OB describing the bucket.
 Bucket binding requires these steps before the bucket is accessible to an app pod:
-1. generation of a random bucket name when requested (performed by bucket lib).
-1. the creation of the physical bucket with owner credentials (performed by provisioner).
-1. the creation of a Secret, based on the provisioner's returned credentials, residing in the OBC's namespace (performed by bucket lib).
+1. (greenfield) generation of a random bucket name when requested (performed by bucket lib).
+1. (greenfield) the creation of the physical bucket with owner credentials (performed by provisioner).
 1. the creation of a ConfigMap, based on the provisioner's returned OB, residing in the OBC's namespace (performed by bucket lib).
+1. the creation of a Secret, based on the provisioner's returned credentials, residing in the OBC's namespace (performed by bucket lib).
+This step usually requires the provisioner to create an object store user with the appropriate bucket access credentials.
 
 `Bound` is one of the supported phases of an OB and an OBC.
 `Bound` indicates that a bucket and all related artifacts have been created on behalf of the OBC. Once a bucket claim is bound the app pod can run, meaning the Secret (containing access credentials) and the ConfigMap (containing the bucket endpoint) are mounted and consumable by the pod.
 
 ### Bucket Deletion
-When an OBC is deleted the provisioner's `Delete()` or `Suspend()` methods will be called depending on the OB's _reclaimPolicy_.
-If the reclaim policy is "delete" then the provisioner's `Delete()` method is called and the bucket is expected to be physically removed.
-If the reclaim policy is "retain" then the provisioner's `Suspend()` method is called and the bucket is expected to not be physically removed.
-However, object store specific clean up such as deleting bucket credentials, detach, archive, etc. can be performed depending on the needs of the object store.
+For greenfield buckets, when an OBC is deleted, the provisioner's `Delete`, `Suspend`, or `Erase` methods will be called depending on the OB's _reclaimPolicy_.
+If the storage class's reclaim policy is "Delete" then the provisioner's `Delete` method is called and the bucket is expected to be physically removed.
+If the reclaim policy is "Retain" then the provisioner's `Suspend` method is called and the bucket is expected to remain with all its data (objects) intact.
+If the reclaim policy is "Erase" then the provisioner's `Erase` method is called and the bucket is expected to remain with all its data (objects) removed. This policy allows the bucket name to be preserved while deleting its contents.
 
-When the OBC is deleted the library attempts to delete _all_ generated artifacts.
-The implementation of Kubernetes _informers_ recognizes that sometimes Delete events are missed.
-Controllers, therefore, need to be robust enough to infer deletes via other mechanisms, such as Status.
-For example, an OBC can be deleted from the cluster, but the delete event is missed and thus the controller doesn't know the delete occurred.
-In this scenario, the associated OB (and possibly the Secret and/or ConfigMap) remain, resulting in an _orphaned_ OB.
+For brownfield buckets, when an OBC is deleted, the provisioner's `Revoke` method is called.
+The provisioner decides whether or not to recognize the reclaimPolicy.
+It is anticipated that most provisioners will choose to ignore the reclaimPolicy and simply cleanup up credentials, users, etc.
+
+In all delete cases, store-specific clean up such as deleting credentials, detach, archive, etc. can be performed, at the discretion of the provisioner, by any of the delete related methods.
+In all delete cases, the library attempts to delete _all_ generated Kubernetes artifacts: OB, Secret, and ConfigMap.
+
 
 #### Orphaned Object Buckets (post phase-0)
+The implementation of Kubernetes _informers_ recognizes that sometimes Delete events are missed.
+Controllers (and this lib), therefore, need to be robust enough to infer deletes via other mechanisms, such as Status or existence of a binding related property.
+For example, an OBC can be deleted from the cluster, but the delete event is missed and thus the controller doesn't know the delete occurred.
+In this scenario, the associated OB (and possibly the Secret and/or ConfigMap) remain, resulting in an _orphaned_ OB.
 An orphaned OB is an OB with no matching OBC, and thus the state of the cluster is inconsistent.
 
-**Note:** this is a greenfield definition and may change when brownfield buckets are supported.
+**Note:** this definition assumes no static OBs for brownfield use.
 
 The solution is to delete orphaned OBs, but how are they detected since OBC watches are triggered by OBC events and there are no "events" associated with orphaned OBs.
 A solution is to run a centralized, provisioner-agnostic OB controller that watches all OBs, and detects and deletes orphans.
@@ -138,9 +148,11 @@ This feature came late for PVCs, see [merged pr](https://github.com/kubernetes/c
 ### Bucket Sharing
 A bucket can be shared, at least within the same namespace.
 The reason for this is that the app pods never reference the OBC (or OB) directly, but instead consume a Secret and ConfigMap in order to access the bucket.
-Since more than one pod can ingest the same Secert and ConfigMap, a bucket can be shared. _TODO: verify._
+Since more than one pod can ingest the same Secert and ConfigMap, a bucket can be shared.
 
 ### Quota
+(applicable only to new buckets)
+
 Bucket size generally cannot be specified; however, the current size of a bucke can usually be monitored.
 The number of buckets can be controlled by a resource quota once [this k8s pr](https://github.com/kubernetes/kubernetes/pull/72384) is merged.
 Until then, Resource Quotas cannot yet be defined for CRDs and, thus, there is no quota on the number of buckets.
@@ -148,15 +160,14 @@ Until then, Resource Quotas cannot yet be defined for CRDs and, thus, there is n
 ### Watches
 
 #### OBC Watches
-All provisioners importing the bucket library watch OBCs across all namespaces.
-Each binary importing the lib performs the same OBC watch.
+Provisioners importing the bucket library watch all OBCs across a designated namespace or across all namespaces.
 OBCs that match the provisioner are further processed and OBCs not matching are quickly skipped.
 
 The OBC watch performs the following:
 + detects a new OBC:
   + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
-  + generate random name if requested
-  + invokes the `Provision()` method for the provisioner defined in the OBC's storage class
+  + generate random name if requested (greenfield)
+  + invokes the `Provision` or `Grant` method for the provisioner defined in the OBC's storage class, depending on the presence/absence of a bucket name in the referenced storage class
   + if the provisioning is successful:
     + create a global OB which references the OBC and storage class and contains store-specific bucket info
     + create a Secret, in the namespace as the OBC, containing the bucket credentials returned by the provisioner
@@ -164,9 +175,9 @@ The OBC watch performs the following:
     + in the above order!
   + if the provisioner returns an error:
     + retry:
-      + call `Delete()` in case the bucket was created (want idempotency for next try)
-      + call `Provision()`
-+ detects OBC update events:
+      + (greenfield) call `Delete` in case the bucket was created (want idempotency for next try)
+      + call `Provision` or `Grant` again
++ detects OBC update events: (post phase-0)
   + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
   + ensure the expected OB, Secret and ConfigMap are present
   + if all present:
@@ -174,8 +185,8 @@ The OBC watch performs the following:
   + sync the OB's status to match the OBC's status
 + detects OBC delete events:
   + skip if the OBC's StorageClass' provisioner != the provisioner doing this watch
-  + invoke the `Delete()` method when the reclaim policy is "delete"
-  + invoke the `Suspend()` method when the reclaim policy is "retain"
+  + invoke the `Delete` method when the reclaim policy is "delete"
+  + invoke the `Suspend` method when the reclaim policy is "retain"
   + delete the related Secret, ConfigMap and the OB (in that order)
 
 #### OB Watches (post phase-0)
@@ -210,19 +221,21 @@ spec:
   bucketName: [3]
   generateBucketName: "photo-booth" [4]
   storageClassName: AN-OBJECT-STORE-STORAGE-CLASS [5]
-  SSL: true | false [6]
-  cannedBucketACL: [7]
-  versioned: true | false [8]
+  #SSL: true | false [6]       # post phase-0, if at all
+  #cannedBucketACL: [7]        # post phase-0, if at all
+  #versioned: true | false [8] # post phase-0, if at all
   additionalConfig: [9]
     ANY_KEY: VALUE ...
 ```
-1. name of the ObjectBucketClaim. This name becomes the Secret and ConfigMap names.
+1. name of the ObjectBucketClaim. This name becomes the name of the Secret and ConfigMap.
 1. namespace of the ObjectBucketClaim, which is also the namespace of the ConfigMap and Secret.
-1. name of the bucket. If used then `generateBucketName` is ignored. **Not** recommended
-for new buckets -- expected to be used for brownfield buckets. Bucket names must be unique within
-an object store, but an object store can store buckets for OBCs across multiple namespaces.
-1. if used then `bucketName` must be empty. The value here is the prefix in a random name
-and `bucketName` will be set to this generated name.
+1. name of the bucket. If supplied then `generateBucketName` is ignored.
+**Not** recommended for new buckets since names must be unique within
+an entire object store.
+1. if supplied then `bucketName` must be empty. This value becomes the prefix for a randomly generated name.
+After `Provision` returns `bucketName` is set to this random name.
+If both `bucketName` and `generateBucketName` are supplied then `BucketName` has precedence and `GenerateBucketName` is ignored. 
+If both `bucketName` and `generateBucketName` are blank or omitted then the storage class is expected to contain the name of an _existing_ bucket. It's an error if all three bucket related names are blank or omitted.
 1. storageClass which defines the object-store service and the bucket provisioner.
 1. SSL defines whether the connection to the bucket requires SSL authentication.
 1. predefined bucket ACLs:
@@ -244,7 +257,7 @@ spec:
 status:
   phase: {"pending", "bound", "released", "failed"}  [5]
 ```
-1. the generated, unique bucket name for the new bucket (standard Kubernetes generated name).
+1. the generated, unique bucket name for the new bucket.
 1. objectReference to the generated OB.
 1. objectReference to the generated ConfigMap.
 1. objectReference to the generated Secret.
@@ -268,16 +281,19 @@ metadata:
   - name: MY-BUCKET-1 [5]
     ...
 type: Opaque
-data: [6]
+data:
   ACCESS_KEY_ID: BASE64_ENCODED-1
   SECRET_ACCESS_KEY: BASE64_ENCODED-2
+  ... [6]
 ```
 1. same name as the OBC. Unique since the secret is in the same namespace as the OBC.
 1. namespce of the originating OBC.
-1. label may be used to associate all artifacts under a paeticular provisioner.
+1. label may be used to associate all artifacts under a particular provisioner.
 1. finalizers set and cleared by the lib's OBC controller. Prevents accidental deletion of the Secret.
 1. ownerReference makes this secret a child of the originating OBC for clean up purposes.
-1. **Note:** the library will create the Secret using `stringData:` and let the Secret API base64 encode the values.
+1. ACCESS_KEY_ID and SECRET_ACCESS_KEY are the only secret keys defined by the library.
+Provisioners are able to cause the lib to create additional keys by returning  the `AdditionalSecretConfig` field.
+**Note:** the library will create the Secret using `stringData:` and let the Secret API base64 encode the values.
 Eg: 
 ```
 stringData:
@@ -304,6 +320,8 @@ data:
   BUCKET_HOST: http://MY-STORE-URL [6]
   BUCKET_PORT: 80 [7]
   BUCKET_NAME: MY-BUCKET-1 [8]
+  BUCKET_REGION: us-west-1
+  ... [9]
 ```
 1. same name as the OBC. Unique since the configMap is in the same namespace as the OBC.
 1. determined by the namespace of the ObjectBucketClaim.
@@ -313,6 +331,8 @@ data:
 1. host URL.
 1. host port.
 1. unique bucket name.
+1. the above data keys are defined by the library.
+Provisioners are able to cause the lib to create additional data keys by returning the `AdditionalConfigData` field.
 
 ### App Pod (independent of provisioner)
 ```yaml
@@ -379,16 +399,24 @@ parameters: [3]
   region: us-west-1
   secretName: s3-bucket-owner
   secretNamespace: s3-provisioner
-reclaimPolicy: Delete [4]
+  bucketName: existing-bucket [4]
+reclaimPolicy: Delete [5]
 ```
-1. (optional) the label here associates this StorageClass to a specific provisioner.  
-1. provisioner responsible to handling OBCs referencing this StorageClass.
+1. (optional) the label here associates this StorageClass to a specific provisioner.
+1. provisioner responsible for handling OBCs referencing this StorageClass.
 1. **all** parameter keys and values are specific to a provisioner, are optional, and are not validated by the StorageClass API.
 Fields to consider are object-store endpoint, version, possibly a secretRef containing info about credential for new bucket owners, etc.
-1. the  `reclaimPolicy` determines the outcome of the bucket when the OBC is deleted.
-_Delete_ = physically delete the bucket.
-_Retain_ = do not physically delete the bucket or any of its objects, but, depending on the provisioner, remove bucket credentials and perform other cleanup.
-_Erase_ = keep the bucket but remove all of its objects. (TBD)
+1. bucketName is required for access to existing buckets.
+Unlike greenfield provisioning, the brownfield bucket name appears in the storage class, not the OBC.
+1. each provisioner decides how to treat the _reclaimPolicy_ when an OBC is deleted. Supported values are:
++ _Delete_ = (typically) physically delete the bucket.
+Depending on new vs. existing bucket, the provisioner's `Delete` or `Revoke` methods are called.
++ _Retain_ = (typically) do not physically delete the bucket.
+Depending on the provisioner, various clean up steps can be performed, such as deleting users, revoking credentials, etc.
+Depending on new vs. existing bucket, the provisioner's `Suspend` or `Revoke` methods are called.
++ _Erase_ = keep the bucket but remove all of its objects and (typically) perform similar cleanup steps as above. 
+This is useful since bucket names generally must be unique across the entire object store, erasing a bucket removes content but preserves its (unique) name.
+Depending on new vs. existing bucket, the provisioner's `Erase` or `Revoke` methods are called.
 
 ### OBC Custom Resource Definition
 ```yaml
@@ -429,100 +457,11 @@ spec:
 ```
 
 ### Interfaces
-#### Provision(), Delete(), Suspend()
-The bucket provisioning library defines three interfaces which all provsioners must support.
-```golang
-// Provisioner the interface to be implemented by users of this
-// library and executed by the Reconciler
-type Provisioner interface {
-	// Provision should be implemented to handle bucket creation
-	// for the target object store
-	Provision(ObjectBucketOptions) (*v1alpha1.ObjectBucket, *auth.AccessKeys, error)
-	// Delete should be implemented to handle bucket deletion
-	// for the target object store
-	Delete(claim *v1alpha1.ObjectBucketClaim) error
-	// Suspend should be implemented to handle bucket cleanup
-	// for the target object store
-	Suspend(claim *v1alpha1.ObjectBucketClaim) error
-}
-```
-##### ObjectBucketOptions
-```golang
-type ObjectBucketOptions struct {
-	// Reclamation policy for a object volume
-	ReclaimPolicy v1.PersistentVolumeReclaimPolicy
-	// Suggested bucket name. Has been randomized if `generateBucketName` was defined.
-	BucketName string
-	// OBC is reference to the claim that lead to provisioning of a new bucket.
-	OBC *v1alpha1.ObjectBucketClaim
-	// Bucekt provisioning parameters from StorageClass
-	Parameters map[string]string
-}
-```
+#### Provision, Delete, Suspend, Erase, Grant, Revoke
+The bucket provisioning library defines several interfaces which all provsioners must support.
 
-##### ObjectBucketClaim
-```golang
-type ObjectBucketClaim struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   ObjectBucketClaimSpec   `json:"spec,omitempty"`
-	Status ObjectBucketClaimStatus `json:"status,omitempty"`
-}
-```
-```golang
-type ObjectBucketClaimSpec struct {
-	StorageClass string
-}
-```
-
-##### ObjectBucket
-```golang
-type ObjectBucket struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   ObjectBucketSpec   `json:"spec,omitempty"`
-	Status ObjectBucketStatus `json:"status,omitempty"`
-}
-```
-```golang
-type ObjectBucketSpec struct {
-	// BucketName the base name of the bucket
-	BucketName string `json:"bucketName"`
-	// Host the host URL of the object store with
-	Host string `json:"host"`
-	// Region the region of the bucket within an object store
-	Region string `json:"region"`
-	// Port the insecure port number of the object store, if it exists
-	Port int `json:"port"`
-	// SecurePort the secure port number of the object store, if it exists
-	SecurePort int `json:"securePort"`
-	// SSL true if the connection is secured with SSL, false if it is not.
-	SSL bool `json:"ssl"`
-
-	// Versioned true if the object store support versioned buckets, false if not
-	Versioned bool `json:"versioned,omitempty"`
-}
-```
-
-##### AccessKeys
-```golang
-type AccessKeys struct {
-	AccessKey, SecretKey string
-}
-```
+TODO: for now, since interface and lib structs are changing no further info is provided in this doc.
 
 ### Future Considerations
 
-+ Brownfield - the use case is narrower than general brownfield.
-Namely, it's
-desired that new credentials are generated for each existing bucket and the lib will wrap these credentials in a secret consumed by the app pod.
-If new credentials are not needed then there is really no need for the lib to be involved.
-We could add a `CreateCredentials()` interface so that object store provisioners can return brownfield bucket access credentials, which the lib can convert into a secret.
-A confimap could also be generated by the lib.
-
-+ If the use case of many app pods consuming the same secret/configMaps becomes important, we could support field mapping in the OBC. In other words, the OBC could define the names of the keys in the secret and data field names in the configMap such that the pod specs wouldn't need to define each env variable separately.
-
-+ The configmap and secret can be more flexible by the addition of `AdditionalConfig` fields defined in the Provision() returned Connection struct.
-The idea is that providers can define their own key-values which are exposed to the app pod via the secret and configmap.
+(TBD)
