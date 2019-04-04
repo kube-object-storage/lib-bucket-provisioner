@@ -19,19 +19,19 @@ func TestAccessKeys_toMap(t *testing.T) {
 		{
 			name: "with defined key values",
 			ak: &AccessKeys{
-				AccessKeyId:     authKey,
+				AccessKeyID:     authKey,
 				SecretAccessKey: authSecret,
 			},
 			want: map[string]string{
-				AwsKeyField:    authKey,
-				AwsSecretField: authSecret,
+				awsKeyField:    authKey,
+				awsSecretField: authSecret,
 			},
 		}, {
 			name: "without defined key values",
 			ak:   &AccessKeys{},
 			want: map[string]string{
-				AwsKeyField:    "",
-				AwsSecretField: "",
+				awsKeyField:    "",
+				awsSecretField: "",
 			},
 		},
 	}

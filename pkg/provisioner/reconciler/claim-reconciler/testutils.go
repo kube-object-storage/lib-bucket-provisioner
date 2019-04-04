@@ -14,25 +14,27 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
-type FakeProvisioner struct{}
+type fakeProvisioner struct{}
 
-var _ api.Provisioner = &FakeProvisioner{}
+var _ api.Provisioner = &fakeProvisioner{}
 
-func (p *FakeProvisioner) Provision(options *api.BucketOptions) (*v1alpha1.ObjectBucket, error) {
+// Provision provides a simple method for testing purposes
+func (p *fakeProvisioner) Provision(options *api.BucketOptions) (*v1alpha1.ObjectBucket, error) {
 	if options == nil || options.ObjectBucketClaim == nil {
 		return nil, fmt.Errorf("got nil ptr")
 	}
 	return &v1alpha1.ObjectBucket{}, nil
 }
 
-func (p *FakeProvisioner) Delete(ob *v1alpha1.ObjectBucket) (err error) {
+// Delete provides a simple method for testing purposes
+func (p *fakeProvisioner) Delete(ob *v1alpha1.ObjectBucket) (err error) {
 	if ob == nil {
 		err = fmt.Errorf("got nil object bucket pointer")
 	}
 	return err
 }
 
-func BuildFakeInternalClient(t *testing.T, initObjs ...runtime.Object) *internalClient {
+func buildFakeInternalClient(t *testing.T, initObjs ...runtime.Object) *internalClient {
 	scheme := runtime.NewScheme()
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Errorf("error adding core/v1 scheme: %v", err)

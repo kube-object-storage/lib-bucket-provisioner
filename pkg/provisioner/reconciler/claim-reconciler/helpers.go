@@ -1,7 +1,6 @@
 package reconciler
 
 import (
-	"context"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
@@ -11,14 +10,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 )
 
-// shouldProvision is a simplistic check on whether this obc is a concern for this provisioner.
-// Down the road, this will perform a broader set of checks.
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	logD.Info("validating claim for provisioning")
 	if obc.Spec.ObjectBucketName != "" {
@@ -57,7 +51,7 @@ func secretForClaimKey(key client.ObjectKey, ic *internalClient) (sec *corev1.Se
 
 func setObjectBucketName(ob *v1alpha1.ObjectBucket, key client.ObjectKey) {
 	logD.Info("setting OB name", "name", ob.Name)
-	ob.Name = fmt.Sprintf(ObjectBucketNameFormat, key.Namespace, key.Name)
+	ob.Name = fmt.Sprintf(objectBucketNameFormat, key.Namespace, key.Name)
 }
 
 func updateClaim(obc *v1alpha1.ObjectBucketClaim, c *internalClient) error {
@@ -66,9 +60,9 @@ func updateClaim(obc *v1alpha1.ObjectBucketClaim, c *internalClient) error {
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return err
-		} else {
-			return fmt.Errorf("error updating OBC: %v", err)
 		}
+		return fmt.Errorf("error updating OBC: %v", err)
+
 	}
 	logD.Info("claim update successful")
 	return nil
@@ -129,31 +123,10 @@ func storageClassForClaim(obc *v1alpha1.ObjectBucketClaim, ic *internalClient) (
 	return class, nil
 }
 
-func createUntilDefaultTimeout(obj runtime.Object, c client.Client, interval, timeout time.Duration) error {
-	logD.Info("creating object until timeout", "interval", interval, "timeout", timeout)
-	if c == nil {
-		return fmt.Errorf("error creating object, nil client")
-	}
-	return wait.PollImmediate(interval, timeout, func() (done bool, err error) {
-		err = c.Create(context.Background(), obj)
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				// The object already exists don't spam the logs, instead let the request be requeued
-				return true, err
-			} else {
-				// The error could be intermittent, log and try again
-				klog.Error("")
-				return false, nil
-			}
-		}
-		return true, nil
-	})
-}
-
 func hasFinalizer(obj v1.Object) bool {
-	logD.Info("checking for finalizer", "value", Finalizer, "object", obj.GetName())
+	logD.Info("checking for finalizer", "value", finalizer, "object", obj.GetName())
 	for _, f := range obj.GetFinalizers() {
-		if f == Finalizer {
+		if f == finalizer {
 			logD.Info("found finalizer in obj")
 			return true
 		}
@@ -162,9 +135,6 @@ func hasFinalizer(obj v1.Object) bool {
 	return false
 }
 
-// RemoveFinalizer deletes the provisioner libraries's finalizer from the Object.  Finalizers added by
-// other sources are left intact.
-// obj MUST be a point so that changes made to obj finalizers are reflected in runObj
 func removeFinalizer(obj v1.Object, ic *internalClient) error {
 	logD.Info("removing finalizer from object", "name", obj.GetName())
 	runObj, ok := obj.(runtime.Object)
@@ -174,7 +144,7 @@ func removeFinalizer(obj v1.Object, ic *internalClient) error {
 
 	finalizers := obj.GetFinalizers()
 	for i, f := range finalizers {
-		if f == Finalizer {
+		if f == finalizer {
 			logD.Info("found finalizer, deleting and updating API")
 			obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
 			err := ic.Client.Update(ic.Ctx, runObj)

@@ -4,13 +4,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// BucketCannedACL strictly types pre-defined S3 bucket ACLs.  Provisioners are recommended to constrain these ACLs
+// scoped to the unique bucket that was created for the request. They are a subset of canned ACLs from AWS S3's
+// definitions of canned ACLs at https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl
 type BucketCannedACL string
 
 const (
-	BucketCannedACLPrivate           BucketCannedACL = "private"
-	BucketCannedACLPublicRead        BucketCannedACL = "public-read"
-	BucketCannedACLPublicReadWrite   BucketCannedACL = "public-read-write"
-	BucketCannedACLAuthenticatedRead BucketCannedACL = "authenticated-read"
+	// BucketCannedACLPrivate owner gets FULL_CONTROL. No one else has access rights.
+	BucketCannedACLPrivate BucketCannedACL = "private"
+	// BucketCannedACLPublicRead owner gets FULL_CONTROL. All users in the store have read access
+	BucketCannedACLPublicRead BucketCannedACL = "public-read"
+	// BucketCannedACLPublicReadWrite Owner gets FULL_CONTROL. All users in the store get READ and WRITE access. Granting
+	// this on a bucket is generally not recommended.
+	BucketCannedACLPublicReadWrite BucketCannedACL = "public-read-write"
 )
 
 // ObjectBucketClaimSpec defines the desired state of ObjectBucketClaim
@@ -44,13 +50,22 @@ type ObjectBucketClaimSpec struct {
 	ObjectBucketName string
 }
 
+// ObjectBucketClaimStatusPhase is set by the controller to save the state of the provisioning process.
 type ObjectBucketClaimStatusPhase string
 
 const (
-	ObjectBucketClaimStatusPhasePending  = "pending"
-	ObjectBucketClaimStatusPhaseBound    = "bound"
+	// ObjectBucketClaimStatusPhasePending indicates that the provisioner has begun handling the request and that it is
+	// still in process
+	ObjectBucketClaimStatusPhasePending = "pending"
+	// ObjectBucketClaimStatusPhaseBound indicates that provisioning has succeeded, the objectBucket is marked bound, and
+	// there is now a configMap and secret containing the appropriate bucket data in the namespace of the claim
+	ObjectBucketClaimStatusPhaseBound = "bound"
+	// ObjectBucketClaimStatusPhaseReleased TODO this would likely mean that the OB was deleted. That situation should never
+	// happen outside of the claim being deleted.  So this state shouldn't naturally arise out of automation.
 	ObjectBucketClaimStatusPhaseReleased = "released"
-	ObjectBucketClaimStatusPhaseFailed   = "failed"
+	// ObjectBucketClaimStatusPhaseFailed indicates that provisioning failed.  There should be no configMap, secret, or
+	// object bucket and no bucket should be left hanging in the object store
+	ObjectBucketClaimStatusPhaseFailed = "failed"
 )
 
 // ObjectBucketClaimStatus defines the observed state of ObjectBucketClaim
