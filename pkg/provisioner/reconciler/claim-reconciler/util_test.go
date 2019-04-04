@@ -1,4 +1,4 @@
-package util
+package reconciler
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,7 +39,7 @@ func TestStorageClassForClaim(t *testing.T) {
 
 	type args struct {
 		obc    *v1alpha1.ObjectBucketClaim
-		client client.Client
+		client *internalClient
 	}
 
 	tests := []struct {
@@ -53,7 +52,7 @@ func TestStorageClassForClaim(t *testing.T) {
 			name: "nil OBC ptr",
 			args: args{
 				obc:    nil,
-				client: BuildFakeClient(t),
+				client: BuildFakeInternalClient(t),
 			},
 			want:    nil,
 			wantErr: true,
@@ -67,7 +66,7 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: "",
 					},
 				},
-				client: BuildFakeClient(t),
+				client: BuildFakeInternalClient(t),
 			},
 			want:    nil,
 			wantErr: true,
@@ -80,7 +79,7 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: storageClassName,
 					},
 				},
-				client: BuildFakeClient(t),
+				client: BuildFakeInternalClient(t),
 			},
 			want: &storagev1.StorageClass{
 				TypeMeta: metav1.TypeMeta{},
@@ -99,7 +98,7 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: storageClassName,
 					},
 				},
-				client: BuildFakeClient(t),
+				client: BuildFakeInternalClient(t),
 			},
 			want:    nil,
 			wantErr: true,
@@ -110,17 +109,17 @@ func TestStorageClassForClaim(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 
 			if tt.args.obc != nil {
-				if err := tt.args.client.Create(context.TODO(), tt.args.obc); err != nil {
+				if err := tt.args.client.Client.Create(context.TODO(), tt.args.obc); err != nil {
 					t.Errorf("error pre-creating OBC: %v", err)
 				}
 			}
 			if tt.want != nil {
-				if err := tt.args.client.Create(context.TODO(), tt.want); err != nil {
+				if err := tt.args.client.Client.Create(context.TODO(), tt.want); err != nil {
 					t.Errorf("error pre-creating StorageClass: %v", err)
 				}
 			}
 
-			got, err := StorageClassForClaim(tt.args.obc, tt.args.client, context.TODO())
+			got, err := storageClassForClaim(tt.args.obc, tt.args.client)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("StorageClassForClaim() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -225,7 +224,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewCredentialsSecret(tt.args.obc, tt.args.authentication)
+			got, err := newCredentialsSecret(tt.args.obc, tt.args.authentication)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewCredentailsSecret() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -239,7 +238,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 
 func TestCreateUntilDefaultTimeout(t *testing.T) {
 
-	fakeClient := BuildFakeClient(t)
+	fakeClient := BuildFakeInternalClient(t)
 
 	objMeta := metav1.ObjectMeta{
 		Namespace: "testNamespace",
@@ -248,7 +247,7 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 
 	type args struct {
 		obj        runtime.Object
-		fakeClient client.Client
+		fakeClient *internalClient
 	}
 
 	tests := []struct {
@@ -295,7 +294,7 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := CreateUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient, 1, 1); (err != nil) != tt.wantErr {
+			if err := createUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient.Client, 1, 1); (err != nil) != tt.wantErr {
 				t.Errorf("CreateUntilDefaultTimeout() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -481,20 +480,20 @@ func TestNewBucketConfigMap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			got, err := NewBucketConfigMap(tt.args.ep, tt.args.obc)
+			got, err := newBucketConfigMap(tt.args.ep, tt.args.obc)
 			if (err != nil) == !tt.wantErr {
-				t.Errorf("NewBucketConfigMap() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("newBucketConfigMap() error = %v, wantErr %v", err, tt.wantErr)
 			} else if !reflect.DeepEqual(got, tt.want) {
 				gotjson, _ := json.MarshalIndent(got, "", "\t")
 				wantjson, _ := json.MarshalIndent(tt.want, "", "\t")
-				t.Errorf("NewBucketConfigMap() = %v, want %v", string(gotjson), string(wantjson))
+				t.Errorf("newBucketConfigMap() = %v, want %v", string(gotjson), string(wantjson))
 			}
 		})
 	}
 }
 
 // should be implemented as an E2E test
-//func TestNewObjectBucket(t *testing.T) {
+// func TestNewObjectBucket(t *testing.T) {
 //
 // 	const (
 // 		testns       = "test-namespace"
@@ -574,7 +573,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 // 	for _, tt := range tests {
 // 		t.Run(tt.name, func(t *testing.T) {
 //
-// 			tt.args.client = BuildFakeClient(t, tt.args.obc)
+// 			tt.args.client = BuildFakeInternalClient(t, tt.args.obc)
 //
 // 			err := tt.args.client.Create(tt.args.ctx, class)
 // 			if err != nil {
@@ -597,20 +596,3 @@ func TestNewBucketConfigMap(t *testing.T) {
 // 		})
 // 	}
 // }
-
-func BuildFakeClient(t *testing.T, initObjs ...runtime.Object) (fakeClient client.Client) {
-
-	scheme := runtime.NewScheme()
-	if err := corev1.AddToScheme(scheme); err != nil {
-		t.Errorf("error adding core/v1 scheme: %v", err)
-	}
-	if err := storagev1.AddToScheme(scheme); err != nil {
-		t.Errorf("error adding storage/v1 scheme: %v", err)
-	}
-	if err := v1alpha1.AddToScheme(scheme); err != nil {
-		t.Errorf("error adding storage/v1 scheme: %v", err)
-	}
-	fakeClient = fake.NewFakeClientWithScheme(scheme, initObjs...)
-
-	return fakeClient
-}

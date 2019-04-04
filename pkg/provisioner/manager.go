@@ -1,17 +1,16 @@
 package provisioner
 
 import (
-	"context"
 	"flag"
-	"os"
+	"fmt"
 	"time"
+
+	"github.com/go-logr/logr"
+	"k8s.io/klog"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 
-	"github.com/go-logr/logr"
-
 	"k8s.io/client-go/rest"
-	"k8s.io/klog"
 	"k8s.io/klog/klogr"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -24,8 +23,6 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 	claimReconciler "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/claim-reconciler"
-	internal "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/reconciler-internal"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/reconciler/util"
 )
 
 // ProvisionerController is the first iteration of our internal provisioning
@@ -50,11 +47,30 @@ type Config struct {
 }
 
 var (
-	// logI is a regular info logger
-	logI logr.InfoLogger
-	// logD is a debug leveled logger
+	log  logr.Logger
 	logD logr.InfoLogger
 )
+
+func initLoggers() {
+	log = klogr.New().WithName(api.Domain + "/provisioner-manager")
+	logD = log.V(1)
+}
+
+func initFlags() {
+	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+	klog.InitFlags(klogFlags)
+
+	flag.CommandLine.VisitAll(func(f *flag.Flag) {
+		kflag := klogFlags.Lookup(f.Name)
+		if kflag != nil {
+			val := f.Value.String()
+			kflag.Value.Set(val)
+		}
+	})
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+}
 
 // NewProvisioner should be called by importers of this library to
 // instantiate a new provisioning controller. This controller will
@@ -65,15 +81,12 @@ func NewProvisioner(
 	provisionerName string,
 	provisioner api.Provisioner,
 	config *Config,
-) *ProvisionerController {
+) (*ProvisionerController, error) {
 
 	initFlags()
+	initLoggers()
 
-	logI = klogr.New().WithName(util.DomainPrefix)
-	logD = klogr.New().WithName(util.DomainPrefix).V(util.DebugLogLvl)
-
-	logI.Info("new provisioner", "name", provisionerName)
-
+	log.Info("constructing new Provisioner", "name", provisionerName)
 	ctrl := &ProvisionerController{
 		Provisioner: provisioner,
 		Name:        provisionerName,
@@ -84,26 +97,22 @@ func NewProvisioner(
 	//  This is especially interesting for ObjectBuckets should we decide they should sync with the underlying bucket.
 	//  For instance, if the actual bucket is deleted,
 	//  we may want to annotate this in the OB after some time
-	logD.Info("generating controller manager")
+	log.Info("generating controller manager")
 	mgr, err := manager.New(cfg, manager.Options{Namespace: config.Namespace})
 	if err != nil {
-		klog.Fatalf("error creating controller manager: %v", err)
+		return nil, fmt.Errorf("error creating new Manager: %v", err)
 	}
 	ctrl.Manager = mgr
 
-	logD.Info("adding schemes to manager")
+	log.Info("adding schemes to manager")
 	if err = apis.AddToScheme(ctrl.Manager.GetScheme()); err != nil {
-		klog.Fatalf("error adding api resources to scheme")
+		return nil, fmt.Errorf("error adding api resources to scheme: %v", err)
 	}
 
-	internalClient := &internal.InternalClient{
-		Ctx:    context.Background(),
-		Client: ctrl.Manager.GetClient(),
-		Scheme: ctrl.Manager.GetScheme(),
-	}
-
+	log.Info("constructing new ObjectBucketClaimReconciler")
 	reconciler := claimReconciler.NewObjectBucketClaimReconciler(
-		internalClient,
+		ctrl.Manager.GetClient(),
+		ctrl.Manager.GetScheme(),
 		provisionerName,
 		provisioner,
 		claimReconciler.Options{})
@@ -129,40 +138,23 @@ func NewProvisioner(
 
 	// Init ObjectBucketClaim controller.
 	// Events for child ConfigMaps and Secrets trigger Reconcile of parent ObjectBucketClaim
-	logI.Info("building controller manager")
+	log.Info("building controller manager")
 	err = builder.ControllerManagedBy(ctrl.Manager).
 		For(&v1alpha1.ObjectBucketClaim{}).
 		WithEventFilter(skipUpdate).
 		Complete(reconciler)
 	if err != nil {
 		if meta.IsNoMatchError(err) {
-			klog.Warningf("Got error: {%v}. All operator CRDs must be created in cluster prior to start.", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("no operator CRDs detected. Create the CRDs before launching provisioner. Error: %v", err)
 		}
-		klog.Fatalf("error creating ObjectBucketClaim controller: %v", err)
+		return nil, fmt.Errorf("error building controller: %v", err)
 	}
-	return ctrl
+	return ctrl, nil
 }
 
 // Run starts the claim and bucket controllers.
 func (p *ProvisionerController) Run() {
 	defer klog.Flush()
-	logI.Info("Starting manager", "provisioner", p.Name)
+	log.Info("Starting manager", "provisioner", p.Name)
 	go p.Manager.Start(signals.SetupSignalHandler())
-}
-
-func initFlags() {
-	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
-	klog.InitFlags(klogFlags)
-
-	flag.CommandLine.VisitAll(func(f *flag.Flag) {
-		kflag := klogFlags.Lookup(f.Name)
-		if kflag != nil {
-			val := f.Value.String()
-			kflag.Value.Set(val)
-		}
-	})
-	if !flag.Parsed() {
-		flag.Parse()
-	}
 }
