@@ -294,11 +294,6 @@ func (in *ObjectBucketSpec) DeepCopyInto(out *ObjectBucketSpec) {
 		*out = new(v1.PersistentVolumeReclaimPolicy)
 		**out = **in
 	}
-	if in.ClaimRef != nil {
-		in, out := &in.ClaimRef, &out.ClaimRef
-		*out = new(v1.ObjectReference)
-		**out = **in
-	}
 	if in.Connection != nil {
 		in, out := &in.Connection, &out.Connection
 		*out = new(Connection)
