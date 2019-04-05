@@ -9,9 +9,10 @@ type mapper interface {
 	toMap() map[string]string
 }
 
+// Conventional environment variable names for S3 Access and Secret Key
 const (
-	awsKeyField    = "AWS_ACCESS_KEY_ID"
-	awsSecretField = "AWS_SECRET_ACCESS_KEY"
+	AwsKeyField    = "AWS_ACCESS_KEY_ID"
+	AwsSecretField = "AWS_SECRET_ACCESS_KEY"
 )
 
 // AccessKeys is an Authentication type for passing AWS S3 style key pairs from the provisioner to the reconciler
@@ -26,8 +27,8 @@ var _ mapper = &AccessKeys{}
 
 func (ak *AccessKeys) toMap() map[string]string {
 	return map[string]string{
-		awsKeyField:    ak.AccessKeyID,
-		awsSecretField: ak.SecretAccessKey,
+		AwsKeyField:    ak.AccessKeyID,
+		AwsSecretField: ak.SecretAccessKey,
 	}
 }
 
@@ -99,8 +100,8 @@ const (
 
 // ObjectBucketStatus defines the observed state of ObjectBucket
 type ObjectBucketStatus struct {
-	Phase      ObjectBucketClaimStatusPhase `json:"phase"`
-	Conditions v1.ConditionStatus           `json:"conditions"`
+	Phase      ObjectBucketStatusPhase `json:"phase"`
+	Conditions v1.ConditionStatus      `json:"conditions"`
 }
 
 // +genclient

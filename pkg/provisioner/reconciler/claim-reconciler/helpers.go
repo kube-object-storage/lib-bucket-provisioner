@@ -2,14 +2,16 @@ package reconciler
 
 import (
 	"fmt"
+
 	"github.com/google/uuid"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -28,6 +30,7 @@ func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 
 func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.ObjectBucketClaim, err error) {
 	logD.Info("getting claim for key")
+	obc = &v1alpha1.ObjectBucketClaim{}
 	if err = ic.Client.Get(ic.Ctx, key, obc); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, err

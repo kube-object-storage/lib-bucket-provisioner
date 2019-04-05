@@ -3,13 +3,15 @@ package reconciler
 import (
 	"context"
 	"fmt"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog"
 	"path"
 	"strconv"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/klog"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 
 	"k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -94,8 +96,8 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 	}, nil
 }
 
-// NewCredentailsSecret returns a secret with data appropriate to the supported authenticaion
-// method. Even if the values for the Authentication keys are empty, we generate the secret.
+// NewCredentialsSecret returns a secret with data appropriate to the supported authenticaion method. Even if the values
+// for the Authentication keys are empty, we generate the secret.
 func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*corev1.Secret, error) {
 
 	if obc == nil {
