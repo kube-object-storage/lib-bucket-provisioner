@@ -7,6 +7,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 
@@ -86,9 +87,10 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 	// get the storage class for claim, if it exists
 	class, err := storageClassForClaim(obc, r.internalClient)
-	if err != nil {
+	if err != nil || class == nil {
 		return done, err
 	}
+	greenfield := obcForNewBkt(obc, class)
 
 	/**************************
 	 Delete or Revoke Bucket
@@ -98,18 +100,18 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("error getting claim")
 		if errors.IsNotFound(reqErr) {
 			log.Info("looks like the OBC was deleted, proceeding with cleanup")
-			err := r.handleDeleteClaim(request.NamespacedName, obcForExistingBkt(obc, class))
+			err := r.handleDeleteClaim(request.NamespacedName, greenfield)
 			if err != nil {
-				log.Error(err, "error deleting ObjectBucket: %v")
+				log.Error(err, "error cleaning up ObjectBucket: %v")
 			}
 			return done, err
 		}
 		return done, fmt.Errorf("error getting claim for request key %q", request)
 	}
 
-	/**************************
-	 Provision Bucket
-	***************************/
+	/*******************************************************
+	 Provision New Bucket or Grant Access to Existing Bucket
+	********************************************************/
 	if !shouldProvision(obc) {
 		log.Info("skipping provision")
 		return done, nil
@@ -120,7 +122,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	}
 
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
-	err = r.handleProvisionClaim(request.NamespacedName, obc)
+	err = r.handleProvisionClaim(request.NamespacedName, obc, class, greenfield)
 
 	// If handleReconcile() errors, the request will be re-queued.  In the distant future, we will likely want some ignorable error types in order to skip re-queuing
 	return done, err
@@ -128,7 +130,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim) error {
+func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass, newBkt bool) error {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
@@ -150,7 +152,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	defer func() {
 		if err != nil {
 			log.Error(err, "cleaning up reconcile artifacts")
-			if !pErr.IsBucketExists(err) && ob != nil {
+			if !pErr.IsBucketExists(err) && ob != nil && newBkt {
 				log.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
 				if err := r.provisioner.Delete(ob); err != nil {
 					log.Error(err, "error deleting bucket")
@@ -160,14 +162,15 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		}
 	}()
 
-	bucketName, err := composeBucketName(obc)
-	if err != nil {
-		return fmt.Errorf("error composing bucket name: %v", err)
+	bucketName := class.Parameters[v1alpha1.StorageClassBucket]
+	if newBkt {
+		bucketName, err = composeBucketName(obc)
+		if err != nil {
+			return fmt.Errorf("error composing bucket name: %v", err)
+		}
 	}
-
-	class, err := storageClassForClaim(obc, r.internalClient)
-	if err != nil {
-		return err
+	if len(bucketName) == 0 {
+		return fmt.Errorf("bucket name missing")
 	}
 
 	if !shouldProvision(obc) {
@@ -181,11 +184,19 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		Parameters:        class.Parameters,
 	}
 
-	logD.Info("provisioning", "bucket", options.BucketName)
-	ob, err = r.provisioner.Provision(options)
+	verb := "provisioning"
+	if !newBkt {
+		verb = "granting access to"
+	}
+	logD.Info(verb, "bucket", options.BucketName)
 
+	if newBkt {
+		ob, err = r.provisioner.Provision(options)
+	} else {
+		ob, err = r.provisioner.Grant(options)
+	}
 	if err != nil {
-		return fmt.Errorf("error provisioning bucket: %v", err)
+		return fmt.Errorf("error %s bucket: %v", verb, err)
 	} else if ob == (&v1alpha1.ObjectBucket{}) {
 		return fmt.Errorf("provisioner returned nil/empty object bucket")
 	}
@@ -214,8 +225,8 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	return nil
 }
 
-// note: oldBkt parm indicates if the OBC was for a new vs existing bucket.
-func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey, oldBkt bool) error {
+// note: newBkt parm indicates if the OBC was for a new vs existing bucket.
+func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey, newBkt bool) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
 
@@ -252,14 +263,14 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey, ol
 	}
 
 	// decide whether Delete or Revoke is called
-	if oldBkt {
-		if err = r.provisioner.Revoke(ob); err != nil {
-			return fmt.Errorf("provisioner error revoking access to bucket %v", err)
-		}
-	} else {
+	if newBkt {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
+		}
+	} else {
+		if err = r.provisioner.Revoke(ob); err != nil {
+			return fmt.Errorf("provisioner error revoking access to bucket %v", err)
 		}
 	}
 
