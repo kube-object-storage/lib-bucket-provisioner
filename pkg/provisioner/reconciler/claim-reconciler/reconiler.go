@@ -82,16 +82,23 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	var done = reconcile.Result{Requeue: false}
 
 	obc, err := claimForKey(request.NamespacedName, r.internalClient)
+	reqErr := err
+
+	// get the storage class for claim, if it exists
+	class, err := storageClassForClaim(obc, r.internalClient)
+	if err != nil {
+		return done, err
+	}
 
 	/**************************
-	 Delete Bucket
+	 Delete or Revoke Bucket
 	***************************/
-	if err != nil {
-		// The OBC was deleted
+	if reqErr != nil {
+		// the OBC was deleted or some other error
 		log.Info("error getting claim")
-		if errors.IsNotFound(err) {
+		if errors.IsNotFound(reqErr) {
 			log.Info("looks like the OBC was deleted, proceeding with cleanup")
-			err := r.handleDeleteClaim(request.NamespacedName)
+			err := r.handleDeleteClaim(request.NamespacedName, obcForExistingBkt(obc, class))
 			if err != nil {
 				log.Error(err, "error deleting ObjectBucket: %v")
 			}
@@ -106,10 +113,6 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	if !shouldProvision(obc) {
 		log.Info("skipping provision")
 		return done, nil
-	}
-	class, err := storageClassForClaim(obc, r.internalClient)
-	if err != nil {
-		return done, err
 	}
 	if !r.supportedProvisioner(class.Provisioner) {
 		log.Info("unsupported provisioner", "got", class.Provisioner)
@@ -211,7 +214,8 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	return nil
 }
 
-func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) error {
+// note: oldBkt parm indicates if the OBC was for a new vs existing bucket.
+func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey, oldBkt bool) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
 
@@ -247,9 +251,16 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		return nil
 	}
 
-	if err = r.provisioner.Delete(ob); err != nil {
-		// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
-		return fmt.Errorf("error deprovisioning bucket %v", err)
+	// decide whether Delete or Revoke is called
+	if oldBkt {
+		if err = r.provisioner.Revoke(ob); err != nil {
+			return fmt.Errorf("provisioner error revoking access to bucket %v", err)
+		}
+	} else {
+		if err = r.provisioner.Delete(ob); err != nil {
+			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
+			return fmt.Errorf("provisioner error deleting bucket %v", err)
+		}
 	}
 
 	if err = deleteObjectBucket(ob, r.internalClient); err != nil {

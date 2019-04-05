@@ -9,10 +9,15 @@ type mapper interface {
 	toMap() map[string]string
 }
 
-// Conventional environment variable names for S3 Access and Secret Key
+// Exported constants used by provisioners: including conventional
+// environment variable names for S3 Access and Secret Key, and
+// map key names. Eg. key to access a bucket name in a storage class
+// used for brownfield buckets, or the key to create an OB's
+// Authentication{}.
 const (
-	AwsKeyField    = "AWS_ACCESS_KEY_ID"
-	AwsSecretField = "AWS_SECRET_ACCESS_KEY"
+	AwsKeyField	   = "AWS_ACCESS_KEY_ID"
+	AwsSecretField	   = "AWS_SECRET_ACCESS_KEY"
+	StorageClassBucket = "BUCKET_NAME"
 )
 
 // AccessKeys is an Authentication type for passing AWS S3 style key pairs from the provisioner to the reconciler
