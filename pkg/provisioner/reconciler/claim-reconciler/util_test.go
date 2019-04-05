@@ -131,12 +131,10 @@ func TestStorageClassForClaim(t *testing.T) {
 
 func TestNewCredentialsSecret(t *testing.T) {
 	const (
-		obcName        = "obc-testname"
-		obcNamespace   = "obc-testnamespace"
-		authKey        = "test-auth-key"
-		authSecret     = "test-auth-secret"
-		awsKeyField    = "ACCESS_KEY_ID"
-		awsSecretField = "SECRET_KEY_ID"
+		obcName      = "obc-testname"
+		obcNamespace = "obc-testnamespace"
+		authKey      = "test-auth-key"
+		authSecret   = "test-auth-secret"
 	)
 
 	testObjectMeta := metav1.ObjectMeta{
@@ -192,8 +190,8 @@ func TestNewCredentialsSecret(t *testing.T) {
 			want: &corev1.Secret{
 				ObjectMeta: testObjectMeta,
 				StringData: map[string]string{
-					awsKeyField:    authKey,
-					awsSecretField: authSecret,
+					v1alpha1.AwsKeyField:    authKey,
+					v1alpha1.AwsSecretField: authSecret,
 				},
 			},
 			wantErr: false,
@@ -214,8 +212,8 @@ func TestNewCredentialsSecret(t *testing.T) {
 			want: &corev1.Secret{
 				ObjectMeta: testObjectMeta,
 				StringData: map[string]string{
-					awsKeyField:    "",
-					awsSecretField: "",
+					v1alpha1.AwsKeyField:    "",
+					v1alpha1.AwsSecretField: "",
 				},
 			},
 			wantErr: false,
