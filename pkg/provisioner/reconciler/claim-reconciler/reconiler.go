@@ -88,13 +88,15 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	var class *storagev1.StorageClass
 	if obc != nil {
 		class, err = storageClassForClaim(obc, r.internalClient)
+log.Info("********* debug 1 *********", "class", class)
+log.Info("********* debug 1 *********", "err", err)
 		if err != nil || class == nil {
 			return done, err
 		}
 	}
-log.Info("********* debug *********", "class", class)
+log.Info("********* debug 2 *********", "class", class)
 	greenfield := scForNewBkt(class)
-log.Info("********* debug *********", "greenfield", greenfield)
+log.Info("********* debug 3 *********", "greenfield", greenfield)
 
 	/**************************
 	 Delete or Revoke Bucket
