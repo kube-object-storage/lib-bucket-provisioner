@@ -83,30 +83,16 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	var done = reconcile.Result{Requeue: false}
 
 	obc, err := claimForKey(request.NamespacedName, r.internalClient)
-	reqErr := err
-
-	var class *storagev1.StorageClass
-	if obc != nil {
-		class, err = storageClassForClaim(obc, r.internalClient)
-log.Info("********* debug 1 *********", "class", class)
-log.Info("********* debug 1 *********", "err", err)
-		if err != nil || class == nil {
-			return done, err
-		}
-	}
-log.Info("********* debug 2 *********", "class", class)
-	greenfield := scForNewBkt(class)
-log.Info("********* debug 3 *********", "greenfield", greenfield)
 
 	/**************************
 	 Delete or Revoke Bucket
 	***************************/
-	if reqErr != nil {
+	if err != nil {
 		// the OBC was deleted or some other error
 		log.Info("error getting claim")
-		if errors.IsNotFound(reqErr) {
+		if errors.IsNotFound(err) {
 			log.Info("looks like the OBC was deleted, proceeding with cleanup")
-			err := r.handleDeleteClaim(request.NamespacedName, greenfield)
+			err := r.handleDeleteClaim(request.NamespacedName)
 			if err != nil {
 				log.Error(err, "error cleaning up ObjectBucket: %v")
 			}
@@ -122,10 +108,15 @@ log.Info("********* debug 3 *********", "greenfield", greenfield)
 		log.Info("skipping provision")
 		return done, nil
 	}
+	class, err := storageClassForClaim(obc, r.internalClient)
+	if err != nil {
+		return done, err
+	}
 	if !r.supportedProvisioner(class.Provisioner) {
 		log.Info("unsupported provisioner", "got", class.Provisioner)
 		return done, nil
 	}
+	greenfield := scForNewBkt(class)
 
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
 	err = r.handleProvisionClaim(request.NamespacedName, obc, class, greenfield)
@@ -232,10 +223,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 }
 
 // note: newBkt parm indicates if the OBC was for a new vs existing bucket.
-func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey, newBkt bool) error {
+func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
-log.Info("********* debug *********", "newBkt", newBkt)
 
 	cm, err := configMapForClaimKey(key, r.internalClient)
 	if err == nil {
@@ -268,6 +258,12 @@ log.Info("********* debug *********", "newBkt", newBkt)
 		log.Error(nil, "got nil objectBucket, assuming deletion complete")
 		return nil
 	}
+
+	class, err := storageClassForOB(ob, r.internalClient)
+	if err != nil || class == nil {
+		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
+	}
+	newBkt := scForNewBkt(class)
 
 	// decide whether Delete or Revoke is called
 	if newBkt {

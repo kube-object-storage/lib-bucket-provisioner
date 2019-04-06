@@ -132,6 +132,30 @@ func storageClassForClaim(obc *v1alpha1.ObjectBucketClaim, ic *internalClient) (
 	return class, nil
 }
 
+func storageClassForOB(ob *v1alpha1.ObjectBucket, ic *internalClient) (*storagev1.StorageClass, error) {
+	logD.Info("getting storageClass for objectbucket")
+	if ob == nil {
+		return nil, fmt.Errorf("got nil ObjectBucket ptr")
+	}
+	className :=  ob.Spec.StorageClassName
+	if className == "" {
+		return nil, fmt.Errorf("no StorageClass defined for ObjectBucket %q", ob.Name)
+	}
+
+	logD.Info("getting storage class", "name", className)
+	class := &storagev1.StorageClass{}
+	scKey := client.ObjectKey{
+		Name: className,
+	}
+	err := ic.Client.Get(ic.Ctx, scKey, class)
+	if err != nil {
+		return nil, fmt.Errorf("error getting storageclass %q: %v", className, err)
+	}
+	log.Info("successfully got class", "name")
+
+	return class, nil
+}
+
 func hasFinalizer(obj v1.Object) bool {
 	logD.Info("checking for finalizer", "value", finalizer, "object", obj.GetName())
 	for _, f := range obj.GetFinalizers() {
