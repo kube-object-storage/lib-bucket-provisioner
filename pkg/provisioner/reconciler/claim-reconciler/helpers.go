@@ -28,11 +28,10 @@ func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	return true
 }
 
-// Return true if this obc granted access to a new bucket based on the
+// Return true if this storage class was for a new bkt vs an existing bkt.
 // referenced storage class.
-func obcForNewBkt(obc *v1alpha1.ObjectBucketClaim, sc *storagev1.StorageClass) bool {
-	bktName := sc.Parameters[v1alpha1.StorageClassBucket]
-	return len(bktName) == 0
+func scForNewBkt(sc *storagev1.StorageClass) bool {
+	return len(sc.Parameters[v1alpha1.StorageClassBucket]) == 0
 }
 
 func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.ObjectBucketClaim, err error) {

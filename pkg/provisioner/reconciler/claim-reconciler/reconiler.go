@@ -85,12 +85,16 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	obc, err := claimForKey(request.NamespacedName, r.internalClient)
 	reqErr := err
 
-	// get the storage class for claim, if it exists
-	class, err := storageClassForClaim(obc, r.internalClient)
-	if err != nil || class == nil {
-		return done, err
+	var class *storagev1.StorageClass
+	if obc != nil {
+		class, err = storageClassForClaim(obc, r.internalClient)
+		if err != nil || class == nil {
+			return done, err
+		}
 	}
-	greenfield := obcForNewBkt(obc, class)
+log.Info("********* debug *********", "class", class)
+	greenfield := scForNewBkt(class)
+log.Info("********* debug *********", "greenfield", greenfield)
 
 	/**************************
 	 Delete or Revoke Bucket
@@ -229,6 +233,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey, newBkt bool) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
+log.Info("********* debug *********", "newBkt", newBkt)
 
 	cm, err := configMapForClaimKey(key, r.internalClient)
 	if err == nil {
