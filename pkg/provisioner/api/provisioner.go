@@ -6,15 +6,18 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
-// Provisioner the interface to be implemented by users of this
-// library and executed by the Reconciler
+// All provisioners must implement the Provisioner interface which defines the
+// methods used to create and delete new buckets, and to grant or revoke access
+// to buckets within the object store.
 type Provisioner interface {
 	// Provision should be implemented to handle bucket creation
-	// for the target object store
 	Provision(options *BucketOptions) (*v1alpha1.ObjectBucket, error)
+	// Grant should be implemented to handle access to existing buckets
+	Grant(options *BucketOptions) (*v1alpha1.ObjectBucket, error)
 	// Delete should be implemented to handle bucket deletion
-	// for the target object store
 	Delete(ob *v1alpha1.ObjectBucket) error
+	// Revoke should be implemented to handle removing bucket access
+	Revoke(ob *v1alpha1.ObjectBucket) error
 }
 
 // BucketOptions wraps all pertinent data that the Provisioner requires to create a

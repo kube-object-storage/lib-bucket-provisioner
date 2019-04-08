@@ -28,6 +28,12 @@ func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	return true
 }
 
+// Return true if this storage class was for a new bkt vs an existing bkt.
+// referenced storage class.
+func scForNewBkt(sc *storagev1.StorageClass) bool {
+	return len(sc.Parameters[v1alpha1.StorageClassBucket]) == 0
+}
+
 func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.ObjectBucketClaim, err error) {
 	logD.Info("getting claim for key")
 	obc = &v1alpha1.ObjectBucketClaim{}
@@ -123,6 +129,30 @@ func storageClassForClaim(obc *v1alpha1.ObjectBucketClaim, ic *internalClient) (
 		return nil, fmt.Errorf("error getting storage class %q: %v", obc.Spec.StorageClassName, err)
 	}
 	log.Info("successfully got class", "name")
+	return class, nil
+}
+
+func storageClassForOB(ob *v1alpha1.ObjectBucket, ic *internalClient) (*storagev1.StorageClass, error) {
+	logD.Info("getting storageClass for objectbucket")
+	if ob == nil {
+		return nil, fmt.Errorf("got nil ObjectBucket ptr")
+	}
+	className :=  ob.Spec.StorageClassName
+	if className == "" {
+		return nil, fmt.Errorf("no StorageClass defined for ObjectBucket %q", ob.Name)
+	}
+
+	logD.Info("getting storage class", "name", className)
+	class := &storagev1.StorageClass{}
+	scKey := client.ObjectKey{
+		Name: className,
+	}
+	err := ic.Client.Get(ic.Ctx, scKey, class)
+	if err != nil {
+		return nil, fmt.Errorf("error getting storageclass %q: %v", className, err)
+	}
+	log.Info("successfully got class", "name")
+
 	return class, nil
 }
 
