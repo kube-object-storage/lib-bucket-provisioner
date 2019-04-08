@@ -48,12 +48,14 @@ func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.Object
 
 func configMapForClaimKey(key client.ObjectKey, ic *internalClient) (cm *corev1.ConfigMap, err error) {
 	logD.Info("getting configMap for key", "key", key)
+	cm = &corev1.ConfigMap{}
 	err = ic.Client.Get(ic.Ctx, key, cm)
 	return
 }
 
 func secretForClaimKey(key client.ObjectKey, ic *internalClient) (sec *corev1.Secret, err error) {
 	logD.Info("getting secret for key", "key", key)
+	sec = &corev1.Secret{}
 	err = ic.Client.Get(ic.Ctx, key, sec)
 	return
 }
@@ -137,7 +139,7 @@ func storageClassForOB(ob *v1alpha1.ObjectBucket, ic *internalClient) (*storagev
 	if ob == nil {
 		return nil, fmt.Errorf("got nil ObjectBucket ptr")
 	}
-	className :=  ob.Spec.StorageClassName
+	className := ob.Spec.StorageClassName
 	if className == "" {
 		return nil, fmt.Errorf("no StorageClass defined for ObjectBucket %q", ob.Name)
 	}

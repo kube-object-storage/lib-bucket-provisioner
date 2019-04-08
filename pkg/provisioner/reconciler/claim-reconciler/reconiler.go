@@ -83,7 +83,6 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 	var done = reconcile.Result{Requeue: false}
 
 	obc, err := claimForKey(request.NamespacedName, r.internalClient)
-logD.Info("======debug===== after claimForkey:", "obc", obc, "err", err)
 
 	/**************************
 	 Delete or Revoke Bucket
