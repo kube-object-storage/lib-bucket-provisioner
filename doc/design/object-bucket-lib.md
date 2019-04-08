@@ -32,11 +32,15 @@ As a result, `kubectl` will be easy to use to create, list, and manage buckets a
 + Present similar user and admin experiences for both _greenfield_ (new) and _brownfield_ (existing) bucket provisioning.
 
 ### Non-Goals
-+ Update Kubernetes PVC-PV API to support object buckets.
++ Update native Kubernetes PVC-PV API to support object buckets for the following reasons:
+  + very long acceptance cadence to get core API enhanements into Kubernetes (2 years+)
+  + Kubernetes is strategically reducing the size of its core and moving pieces out of core into CRDs
+  + buckets are inherently different from files/directories and blocks in that there are no "attach" nor "mount" steps that would need to be performed by the kubelet
 + Handle the small percentage of apps that will not be portable due to use of non-compatible object-store features.
 For example, an app that uses a feature in object-store-1 that is not provided in object-store-2, and the app now is tied to an object-store-2 endpoint.
 
 ### Assumptions
+1. There is no reasonable chance to change the PV-PVC core API (see non-goals above).
 1. There is no "_best match_" binding between a bucket claim and a bucket resource, even for brownfield use cases. Thus, pre-creating object bucket resources is _not_ necessary for brownfield.
 1. Apps need to be designed for object-store portability.
 Just like there can be portability issues when an app exploits specialized features of a file system, an app accessing buckets, where portability matters, must be designed for that purpose.
