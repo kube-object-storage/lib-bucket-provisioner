@@ -15,8 +15,8 @@ type mapper interface {
 // used for brownfield buckets, or the key to create an OB's
 // Authentication{}.
 const (
-	AwsKeyField	   = "AWS_ACCESS_KEY_ID"
-	AwsSecretField	   = "AWS_SECRET_ACCESS_KEY"
+	AwsKeyField        = "AWS_ACCESS_KEY_ID"
+	AwsSecretField     = "AWS_SECRET_ACCESS_KEY"
 	StorageClassBucket = "BUCKET_NAME"
 )
 
