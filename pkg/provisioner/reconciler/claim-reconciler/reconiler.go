@@ -223,7 +223,6 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	return nil
 }
 
-// note: newBkt parm indicates if the OBC was for a new vs existing bucket.
 func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
