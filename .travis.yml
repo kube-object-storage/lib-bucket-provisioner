@@ -16,3 +16,10 @@ before_script:
 
 script:
   - ./hack/go.sh preflight
+
+deploy:
+  - provider: script
+    script: ./hack/go.sh preflight
+    on:
+      branch: master
+
