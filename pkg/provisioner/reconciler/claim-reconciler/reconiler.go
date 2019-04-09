@@ -267,6 +267,10 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 
 	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
 	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
+	if ob.Spec.ReclaimPolicy == nil {
+		log.Error(nil, "got null reclaimPolicy", "ob", ob.Name)
+		return nil
+	}
 	reclaim := *ob.Spec.ReclaimPolicy
 /////reclaim := corev1.PersistentVolumeReclaimPolicy(*ob.Spec.ReclaimPolicy)
 	// decide whether Delete or Revoke is called
