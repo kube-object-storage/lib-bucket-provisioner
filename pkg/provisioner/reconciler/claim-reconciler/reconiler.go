@@ -205,6 +205,10 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
 	ob.Spec.ClaimRef, err = claimRefForKey(key, r.internalClient)
 	ob.SetFinalizers([]string{finalizer})
+	// allow provisioner to modify reclaimPolicy
+	if ob.Spec.ReclaimPolicy == nil {
+		ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+	}
 
 	if ob, err = createObjectBucket(ob, r.internalClient, r.retryInterval, r.retryTimeout); err != nil {
 		return err
