@@ -116,10 +116,9 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("unsupported provisioner", "got", class.Provisioner)
 		return done, nil
 	}
-	greenfield := scForNewBkt(class)
 
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
-	err = r.handleProvisionClaim(request.NamespacedName, obc, class, greenfield)
+	err = r.handleProvisionClaim(request.NamespacedName, obc, class)
 
 	// If handleReconcile() errors, the request will be re-queued.  In the distant future, we will likely want some ignorable error types in order to skip re-queuing
 	return done, err
@@ -127,7 +126,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass, isDynamicProvisioning bool) error {
+func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
@@ -143,6 +142,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		}
 		return err
 	}
+
+	// use storage class to determine if this is a new or an old bucket
+	newBkt := scForNewBkt(class)
 
 	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
 	// It is assumed that if the get claim fails, no resources were generated to begin with.
@@ -224,6 +226,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	return nil
 }
 
+// Call the provisioner's `Delete` method for new (greenfield) buckets with a reclaimPolicy of "Delete".
+// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
+// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
 func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
@@ -264,10 +269,13 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 	if err != nil || class == nil {
 		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
 	}
+
+	// use storage class to determine if this is a new or an old bucket
 	newBkt := scForNewBkt(class)
+	reclaim := corev1.PersistentVolumeReclaimPolicy(*class.ReclaimPolicy)
 
 	// decide whether Delete or Revoke is called
-	if newBkt {
+	if newBkt && reclaim == corev1.PersistentVolumeReclaimDelete {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
