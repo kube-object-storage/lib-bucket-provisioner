@@ -59,7 +59,7 @@ func isNewBucketByOB(ic *internalClient, ob *v1alpha1.ObjectBucket) bool {
 func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.ObjectBucketClaim, err error) {
 	logD.Info("getting claim for key")
 	obc = &v1alpha1.ObjectBucketClaim{}
-	if err = ic.Get(ic.ctx, key, obc); err != nil {
+	if err = ic.Client.Get(ic.ctx, key, obc); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, err
 		}
