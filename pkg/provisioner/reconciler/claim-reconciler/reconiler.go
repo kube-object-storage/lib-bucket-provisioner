@@ -190,10 +190,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 	logD.Info(verb, "bucket", options.BucketName)
 
-	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
-	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
-	reclaim := corev1.PersistentVolumeReclaimPolicy(*ob.Spec.ReclaimPolicy)
-	if isDynamicProvisioning && reclaim == corev1.PersistentVolumeReclaimDelete {
+	if isDynamicProvisioning {
 		ob, err = r.provisioner.Provision(options)
 	} else {
 		ob, err = r.provisioner.Grant(options)
@@ -272,8 +269,12 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 	}
 	newBkt := r.internalClient.isNewBucketByOB(ob)
 
+	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
+	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
+	reclaim := *ob.Spec.ReclaimPolicy
+/////reclaim := corev1.PersistentVolumeReclaimPolicy(*ob.Spec.ReclaimPolicy)
 	// decide whether Delete or Revoke is called
-	if newBkt {
+	if newBkt && reclaim == corev1.PersistentVolumeReclaimDelete  {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
