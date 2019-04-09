@@ -262,19 +262,15 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		log.Error(nil, "got nil objectBucket, assuming deletion complete")
 		return nil
 	}
-
-	class, err := storageClassForOB(ob, r.internalClient)
-	if err != nil || class == nil {
-		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
-	}
-	newBkt := r.internalClient.isNewBucketByOB(ob)
+	// see if obc delete is for a newly provisioned bkt vs an existing bkt
+	isNewBkt := r.internalClient.isNewBucketByOB(ob)
 
 	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
 	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
 	reclaim := *ob.Spec.ReclaimPolicy
 /////reclaim := corev1.PersistentVolumeReclaimPolicy(*ob.Spec.ReclaimPolicy)
 	// decide whether Delete or Revoke is called
-	if newBkt && reclaim == corev1.PersistentVolumeReclaimDelete  {
+	if isNewBkt && reclaim == corev1.PersistentVolumeReclaimDelete  {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
