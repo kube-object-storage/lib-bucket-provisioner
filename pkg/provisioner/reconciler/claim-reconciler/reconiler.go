@@ -143,9 +143,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
-	// use storage class to determine if this bkt was dynamically provisioned
+	// use storage class to determine if this bkt was dynamically provision
 	// (greenfield) or not (brownfield)
-	isNewBkt := isNewBucketByClass(class)
+	isDynamicProvisioning := isNewBucketByClass(class)
 
 	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
 	// It is assumed that if the get claim fails, no resources were generated to begin with.
@@ -190,7 +190,10 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 	logD.Info(verb, "bucket", options.BucketName)
 
-	if isDynamicProvisioning {
+	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
+	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
+	reclaim := *ob.Spec.ReclaimPolicy
+	if isDynamicProvisioning && reclaim == corev1.PersistentVolumeReclaimDelete {
 		ob, err = r.provisioner.Provision(options)
 	} else {
 		ob, err = r.provisioner.Grant(options)
@@ -227,9 +230,6 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	return nil
 }
 
-// Call the provisioner's `Delete` method for new (greenfield) buckets with a reclaimPolicy of "Delete".
-// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
-// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
 func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
@@ -266,11 +266,14 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		return nil
 	}
 
-	isNewBkt := r.internalClient.isNewBucketByOB(ob)
-	reclaim := *ob.Spec.ReclaimPolicy
+	class, err := storageClassForOB(ob, r.internalClient)
+	if err != nil || class == nil {
+		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
+	}
+	newBkt := scForNewBkt(class)
 
 	// decide whether Delete or Revoke is called
-	if isNewBkt && reclaim == corev1.PersistentVolumeReclaimDelete {
+	if newBkt {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
