@@ -192,7 +192,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 
 	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
 	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
-	reclaim := *ob.Spec.ReclaimPolicy
+	reclaim := corev1.PersistentVolumeReclaimPolicy(*ob.Spec.ReclaimPolicy)
 	if isDynamicProvisioning && reclaim == corev1.PersistentVolumeReclaimDelete {
 		ob, err = r.provisioner.Provision(options)
 	} else {
