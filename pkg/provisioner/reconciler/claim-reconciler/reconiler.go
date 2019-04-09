@@ -117,6 +117,11 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		return done, nil
 	}
 
+	obc, err = updateObjectBucketClaimPhase(r.internalClient, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, r.retryInterval, r.retryTimeout)
+	if err != nil {
+		return done, err
+	}
+
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
 	err = r.handleProvisionClaim(request.NamespacedName, obc, class)
 
@@ -206,10 +211,20 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	setObjectBucketName(ob, key)
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
 	ob.Spec.ClaimRef, err = claimRefForKey(key, r.internalClient)
-	ob.SetFinalizers([]string{finalizer})
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+	ob.SetFinalizers([]string{finalizer})
 
 	if ob, err = createObjectBucket(ob, r.internalClient, r.retryInterval, r.retryTimeout); err != nil {
+		return err
+	}
+
+	ob, err = updateObjectBucketPhase(r.internalClient, ob, v1alpha1.ObjectBucketStatusPhaseBound, r.retryInterval, r.retryTimeout)
+	if err != nil {
+		return err
+	}
+
+	obc, err = updateObjectBucketClaimPhase(r.internalClient, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, r.retryInterval, r.retryTimeout)
+	if err != nil {
 		return err
 	}
 
@@ -225,7 +240,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 
 	// Only update the claim if the secret and configMap succeed
-	if err = updateClaim(obc, r.internalClient); err != nil {
+	if err = updateClaim(r.internalClient, obc, r.retryInterval, r.retryTimeout); err != nil {
 		return err
 	}
 	log.Info("provisioning succeeded")
@@ -267,8 +282,6 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		log.Error(nil, "got nil objectBucket, assuming deletion complete")
 		return nil
 	}
-	// see if obc delete is for a newly provisioned bkt vs an existing bkt
-	isDynamicallyProvisioned := isNewBucketByOB(r.internalClient, ob)
 
 	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
 	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
@@ -276,9 +289,14 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		log.Error(nil, "got null reclaimPolicy", "ob", ob.Name)
 		return nil
 	}
-	reclaim := *ob.Spec.ReclaimPolicy
+
+	ob, err = updateObjectBucketPhase(r.internalClient, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, r.retryInterval, r.retryTimeout)
+	if err != nil {
+		return err
+	}
+
 	// decide whether Delete or Revoke is called
-	if isDynamicallyProvisioned && reclaim == corev1.PersistentVolumeReclaimDelete {
+	if isNewBucketByOB(r.internalClient, ob) && *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimDelete {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
@@ -314,15 +332,6 @@ func (r *ObjectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectK
 		return nil, fmt.Errorf("error listing object buckets: %v", err)
 	}
 	return ob, nil
-}
-
-func (r *ObjectBucketClaimReconciler) updateObjectBucketClaimPhase(obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase) (*v1alpha1.ObjectBucketClaim, error) {
-	obc.Status.Phase = phase
-	err := r.Client.Update(r.ctx, obc)
-	if err != nil {
-		return nil, fmt.Errorf("error updating phase: %v", err)
-	}
-	return obc, nil
 }
 
 func (r *ObjectBucketClaimReconciler) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
