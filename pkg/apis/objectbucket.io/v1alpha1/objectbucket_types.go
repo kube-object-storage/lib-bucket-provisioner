@@ -1,8 +1,9 @@
 package v1alpha1
 
 import (
-	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 type mapper interface {
@@ -79,9 +80,9 @@ type Connection struct {
 // ObjectBucketSpec defines the desired state of ObjectBucket. Fields defined here should be normal among all providers.
 // Authentication must be of a type defined in this package to pass type checks in reconciler
 type ObjectBucketSpec struct {
-	StorageClassName string                            `json:"storageClassName"`
-	ReclaimPolicy    *v1.PersistentVolumeReclaimPolicy `json:"reclaimPolicy"`
-	ClaimRef         *v1.ObjectReference               `json:"claimRef"`
+	StorageClassName string                                `json:"storageClassName"`
+	ReclaimPolicy    *corev1.PersistentVolumeReclaimPolicy `json:"reclaimPolicy"`
+	ClaimRef         types.UID                             `json:"claimRef"`
 	*Connection      `json:"Connection"`
 }
 
@@ -106,7 +107,7 @@ const (
 // ObjectBucketStatus defines the observed state of ObjectBucket
 type ObjectBucketStatus struct {
 	Phase      ObjectBucketStatusPhase `json:"phase"`
-	Conditions v1.ConditionStatus      `json:"conditions"`
+	Conditions corev1.ConditionStatus  `json:"conditions"`
 }
 
 // +genclient

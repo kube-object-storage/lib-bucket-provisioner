@@ -52,17 +52,17 @@ func NewObjectBucketClaimReconciler(client client.Client, scheme *runtime.Scheme
 	if options.RetryInterval < defaultRetryBaseInterval {
 		options.RetryInterval = defaultRetryBaseInterval
 	}
-	logD.Info("retry loop setting", "RetryBaseInterval", options.RetryInterval)
+	logD.Info("retry loop setting", "RetryBaseInterval", options.RetryInterval.Seconds())
 	if options.RetryTimeout < defaultRetryTimeout {
 		options.RetryTimeout = defaultRetryTimeout
 	}
-	logD.Info("retry loop setting", "RetryTimeout", options.RetryTimeout)
+	logD.Info("retry loop setting", "RetryTimeout", options.RetryTimeout.Seconds())
 
 	return &ObjectBucketClaimReconciler{
 		internalClient: &internalClient{
-			Ctx:    context.Background(),
+			ctx:    context.Background(),
 			Client: client,
-			Scheme: scheme,
+			scheme: scheme,
 		},
 		provisionerName: strings.ToLower(name),
 		provisioner:     provisioner,
@@ -127,7 +127,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass, newBkt bool) error {
+func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass, isDynamicProvisioning bool) error {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
@@ -149,7 +149,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	defer func() {
 		if err != nil {
 			log.Error(err, "cleaning up reconcile artifacts")
-			if !pErr.IsBucketExists(err) && ob != nil && newBkt {
+			if !pErr.IsBucketExists(err) && ob != nil && isDynamicProvisioning {
 				log.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
 				if err := r.provisioner.Delete(ob); err != nil {
 					log.Error(err, "error deleting bucket")
@@ -160,7 +160,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}()
 
 	bucketName := class.Parameters[v1alpha1.StorageClassBucket]
-	if newBkt {
+	if isDynamicProvisioning {
 		bucketName, err = composeBucketName(obc)
 		if err != nil {
 			return fmt.Errorf("error composing bucket name: %v", err)
@@ -182,12 +182,12 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 
 	verb := "provisioning"
-	if !newBkt {
+	if !isDynamicProvisioning {
 		verb = "granting access to"
 	}
 	logD.Info(verb, "bucket", options.BucketName)
 
-	if newBkt {
+	if isDynamicProvisioning {
 		ob, err = r.provisioner.Provision(options)
 	} else {
 		ob, err = r.provisioner.Grant(options)
@@ -200,8 +200,10 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 
 	setObjectBucketName(ob, key)
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
+	ob.Spec.ClaimRef, err = claimRefForKey(key, r.internalClient)
+	ob.SetFinalizers([]string{finalizer})
 
-	if ob, err = createObjectBucket(ob, r.Client, r.retryInterval, r.retryTimeout); err != nil {
+	if ob, err = createObjectBucket(ob, r.internalClient, r.retryInterval, r.retryTimeout); err != nil {
 		return err
 	}
 
@@ -296,7 +298,7 @@ func (r *ObjectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectK
 	obKey := client.ObjectKey{
 		Name: fmt.Sprintf(objectBucketNameFormat, key.Namespace, key.Name),
 	}
-	err := r.Client.Get(r.Ctx, obKey, ob)
+	err := r.Client.Get(r.ctx, obKey, ob)
 	if err != nil {
 		return nil, fmt.Errorf("error listing object buckets: %v", err)
 	}
@@ -305,7 +307,7 @@ func (r *ObjectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectK
 
 func (r *ObjectBucketClaimReconciler) updateObjectBucketClaimPhase(obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase) (*v1alpha1.ObjectBucketClaim, error) {
 	obc.Status.Phase = phase
-	err := r.Client.Update(r.Ctx, obc)
+	err := r.Client.Update(r.ctx, obc)
 	if err != nil {
 		return nil, fmt.Errorf("error updating phase: %v", err)
 	}
