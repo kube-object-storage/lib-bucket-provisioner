@@ -108,7 +108,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("skipping provision")
 		return done, nil
 	}
-	class, err := storageClassForClaim(obc, r.internalClient)
+	class, err := r.internalClient.storageClassForClaim(obc)
 	if err != nil {
 		return done, err
 	}
@@ -143,8 +143,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
-	// use storage class to determine if this is a new or an old bucket
-	newBkt := scForNewBkt(class)
+	// use storage class to determine if this bkt was dynamically provisioned
+	// (greenfield) or not (brownfield)
+	isNewBkt := isNewBucketByClass(class)
 
 	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
 	// It is assumed that if the get claim fails, no resources were generated to begin with.
@@ -265,17 +266,11 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		return nil
 	}
 
-	class, err := storageClassForOB(ob, r.internalClient)
-	if err != nil || class == nil {
-		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
-	}
-
-	// use storage class to determine if this is a new or an old bucket
-	newBkt := scForNewBkt(class)
-	reclaim := corev1.PersistentVolumeReclaimPolicy(*class.ReclaimPolicy)
+	isNewBkt := r.internalClient.isNewBucketByOB(ob)
+	reclaim := *ob.Spec.ReclaimPolicy
 
 	// decide whether Delete or Revoke is called
-	if newBkt && reclaim == corev1.PersistentVolumeReclaimDelete {
+	if isNewBkt && reclaim == corev1.PersistentVolumeReclaimDelete {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
