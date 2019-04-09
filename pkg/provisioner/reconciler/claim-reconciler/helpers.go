@@ -30,7 +30,6 @@ func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	return true
 }
 
-<<<<<<< HEAD
 func claimRefForKey(key client.ObjectKey, ic *internalClient) (types.UID, error) {
 	claim, err := claimForKey(key, ic)
 	if err != nil {

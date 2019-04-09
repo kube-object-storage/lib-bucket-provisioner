@@ -270,7 +270,7 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 	if err != nil || class == nil {
 		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
 	}
-	newBkt := scForNewBkt(class)
+	newBkt := r.internalClient.isNewBucketByOB(ob)
 
 	// decide whether Delete or Revoke is called
 	if newBkt {
