@@ -108,7 +108,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("skipping provision")
 		return done, nil
 	}
-	class, err := storageClassForClaim(obc, r.internalClient)
+	class, err := storageClassForClaim(r.internalClient, obc)
 	if err != nil {
 		return done, err
 	}
@@ -116,10 +116,9 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("unsupported provisioner", "got", class.Provisioner)
 		return done, nil
 	}
-	greenfield := scForNewBkt(class)
 
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
-	err = r.handleProvisionClaim(request.NamespacedName, obc, class, greenfield)
+	err = r.handleProvisionClaim(request.NamespacedName, obc, class)
 
 	// If handleReconcile() errors, the request will be re-queued.  In the distant future, we will likely want some ignorable error types in order to skip re-queuing
 	return done, err
@@ -127,7 +126,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass, isDynamicProvisioning bool) error {
+func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
@@ -143,6 +142,11 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		}
 		return err
 	}
+
+	// If the storage class contains the name of the bucket then we create access
+	// to an existing bucket. If the bucket name does not appear in the storage
+	// class then we dynamically provision a new bucket.
+	isDynamicProvisioning := isNewBucketByClass(class)
 
 	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
 	// It is assumed that if the get claim fails, no resources were generated to begin with.
@@ -202,6 +206,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
 	ob.Spec.ClaimRef, err = claimRefForKey(key, r.internalClient)
 	ob.SetFinalizers([]string{finalizer})
+	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 
 	if ob, err = createObjectBucket(ob, r.internalClient, r.retryInterval, r.retryTimeout); err != nil {
 		return err
@@ -259,15 +264,18 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		log.Error(nil, "got nil objectBucket, assuming deletion complete")
 		return nil
 	}
+	// see if obc delete is for a newly provisioned bkt vs an existing bkt
+	isDynamicallyProvisioned := isNewBucketByOB(r.internalClient, ob)
 
-	class, err := storageClassForOB(ob, r.internalClient)
-	if err != nil || class == nil {
-		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
+	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
+	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
+	if ob.Spec.ReclaimPolicy == nil {
+		log.Error(nil, "got null reclaimPolicy", "ob", ob.Name)
+		return nil
 	}
-	newBkt := scForNewBkt(class)
-
+	reclaim := *ob.Spec.ReclaimPolicy
 	// decide whether Delete or Revoke is called
-	if newBkt {
+	if isDynamicallyProvisioned && reclaim == corev1.PersistentVolumeReclaimDelete  {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)

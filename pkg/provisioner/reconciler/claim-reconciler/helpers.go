@@ -38,10 +38,22 @@ func claimRefForKey(key client.ObjectKey, ic *internalClient) (types.UID, error)
 	return claim.UID, nil
 }
 
-// Return true if this storage class was for a new bkt vs an existing bkt.
-// referenced storage class.
-func scForNewBkt(sc *storagev1.StorageClass) bool {
+// Return true if this storage class is for a new bucket vs an existing bucket.
+func isNewBucketByClass(sc *storagev1.StorageClass) bool {
 	return len(sc.Parameters[v1alpha1.StorageClassBucket]) == 0
+}
+
+// Return true if this OB is for a new bucket vs an existing bucket.
+func isNewBucketByOB(ic *internalClient, ob *v1alpha1.ObjectBucket) bool {
+	// temp: get bucket name from OB's storage class
+	class, err := storageClassForOB(ob, ic)
+	if err != nil || class == nil {
+		log.Info("ERROR: unable to get storageclass", "ob", ob)
+		logD.Info("ERROR: returning false for `isNewBucketByOB`")
+		return false
+	}
+	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
+	// return ob.Spec.DynamicProivisioned
 }
 
 func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.ObjectBucketClaim, err error) {
@@ -118,7 +130,7 @@ func generateBucketName(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
 }
 
-func storageClassForClaim(obc *v1alpha1.ObjectBucketClaim, ic *internalClient) (*storagev1.StorageClass, error) {
+func storageClassForClaim(ic *internalClient, obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
 	logD.Info("getting storageClass for claim")
 	if obc == nil {
 		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
