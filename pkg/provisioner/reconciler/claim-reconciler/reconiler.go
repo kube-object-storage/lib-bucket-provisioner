@@ -276,7 +276,6 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		return nil
 	}
 	reclaim := *ob.Spec.ReclaimPolicy
-/////reclaim := corev1.PersistentVolumeReclaimPolicy(*ob.Spec.ReclaimPolicy)
 	// decide whether Delete or Revoke is called
 	if isNewBkt && reclaim == corev1.PersistentVolumeReclaimDelete  {
 		if err = r.provisioner.Delete(ob); err != nil {
