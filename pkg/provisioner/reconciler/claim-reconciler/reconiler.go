@@ -108,7 +108,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("skipping provision")
 		return done, nil
 	}
-	class, err := r.internalClient.storageClassForClaim(obc)
+	class, err := storageClassForClaim(r.internalClient, obc)
 	if err != nil {
 		return done, err
 	}
@@ -143,8 +143,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
-	// use storage class to determine if this bkt was dynamically provision
-	// (greenfield) or not (brownfield)
+	// If the storage class contains the name of the bucket then we create access
+	// to an existing bucket. If the bucket name does not appear in the storage
+	// class then we dynamically provision a new bucket.
 	isDynamicProvisioning := isNewBucketByClass(class)
 
 	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
@@ -205,10 +206,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
 	ob.Spec.ClaimRef, err = claimRefForKey(key, r.internalClient)
 	ob.SetFinalizers([]string{finalizer})
-	// allow provisioner to modify reclaimPolicy
-	if ob.Spec.ReclaimPolicy == nil {
-		ob.Spec.ReclaimPolicy = options.ReclaimPolicy
-	}
+	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 
 	if ob, err = createObjectBucket(ob, r.internalClient, r.retryInterval, r.retryTimeout); err != nil {
 		return err
@@ -267,7 +265,7 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		return nil
 	}
 	// see if obc delete is for a newly provisioned bkt vs an existing bkt
-	isNewBkt := r.internalClient.isNewBucketByOB(ob)
+	isDynamicallyProvisioned := isNewBucketByOB(r.internalClient, ob)
 
 	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
 	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
@@ -277,7 +275,7 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 	}
 	reclaim := *ob.Spec.ReclaimPolicy
 	// decide whether Delete or Revoke is called
-	if isNewBkt && reclaim == corev1.PersistentVolumeReclaimDelete  {
+	if isDynamicallyProvisioned && reclaim == corev1.PersistentVolumeReclaimDelete  {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)

@@ -44,7 +44,7 @@ func isNewBucketByClass(sc *storagev1.StorageClass) bool {
 }
 
 // Return true if this OB is for a new bucket vs an existing bucket.
-func (ic *internalClient) isNewBucketByOB(ob *v1alpha1.ObjectBucket) bool {
+func isNewBucketByOB(ic *internalClient, ob *v1alpha1.ObjectBucket) bool {
 	// temp: get bucket name from OB's storage class
 	class, err := storageClassForOB(ob, ic)
 	if err != nil || class == nil {
@@ -130,7 +130,7 @@ func generateBucketName(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
 }
 
-func (ic *internalClient) storageClassForClaim(obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
+func storageClassForClaim(ic *internalClient, obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
 	logD.Info("getting storageClass for claim")
 	if obc == nil {
 		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
