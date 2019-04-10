@@ -3,8 +3,6 @@ package reconciler
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"path"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -264,8 +262,11 @@ func TestCreateUntilDefaultTimeout(t *testing.T) {
 		{
 			name: "nil client",
 			args: args{
-				obj:        &corev1.Pod{}, // arbitrary runtime.Object
-				fakeClient: nil,
+				obj: &corev1.Pod{}, // arbitrary runtime.Object
+				fakeClient: func(fc internalClient) *internalClient {
+					fc.Client = nil
+					return &fc
+				}(*fakeClient),
 			},
 			wantErr: true,
 		},
@@ -403,7 +404,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 					bucketSSL:       strconv.FormatBool(ssl),
 					bucketRegion:    region,
 					bucketSubRegion: subRegion,
-					bucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
 				},
 			},
 			wantErr: false,
@@ -436,7 +436,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 					bucketSSL:       strconv.FormatBool(ssl),
 					bucketRegion:    region,
 					bucketSubRegion: "",
-					bucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, name)),
 				},
 			},
 			wantErr: false,
@@ -469,7 +468,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 					bucketSSL:       strconv.FormatBool(!ssl),
 					bucketRegion:    region,
 					bucketSubRegion: subRegion,
-					bucketURL:       fmt.Sprintf("%s:%d/%s", host, port, path.Join(region, subRegion, name)),
 				},
 			},
 			wantErr: false,

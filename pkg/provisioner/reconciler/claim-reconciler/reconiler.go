@@ -52,17 +52,17 @@ func NewObjectBucketClaimReconciler(client client.Client, scheme *runtime.Scheme
 	if options.RetryInterval < defaultRetryBaseInterval {
 		options.RetryInterval = defaultRetryBaseInterval
 	}
-	logD.Info("retry loop setting", "RetryBaseInterval", options.RetryInterval)
+	logD.Info("retry loop setting", "RetryBaseInterval", options.RetryInterval.Seconds())
 	if options.RetryTimeout < defaultRetryTimeout {
 		options.RetryTimeout = defaultRetryTimeout
 	}
-	logD.Info("retry loop setting", "RetryTimeout", options.RetryTimeout)
+	logD.Info("retry loop setting", "RetryTimeout", options.RetryTimeout.Seconds())
 
 	return &ObjectBucketClaimReconciler{
 		internalClient: &internalClient{
-			Ctx:    context.Background(),
+			ctx:    context.Background(),
 			Client: client,
-			Scheme: scheme,
+			scheme: scheme,
 		},
 		provisionerName: strings.ToLower(name),
 		provisioner:     provisioner,
@@ -108,7 +108,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("skipping provision")
 		return done, nil
 	}
-	class, err := storageClassForClaim(obc, r.internalClient)
+	class, err := storageClassForClaim(r.internalClient, obc)
 	if err != nil {
 		return done, err
 	}
@@ -116,10 +116,9 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 		log.Info("unsupported provisioner", "got", class.Provisioner)
 		return done, nil
 	}
-	greenfield := scForNewBkt(class)
 
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
-	err = r.handleProvisionClaim(request.NamespacedName, obc, class, greenfield)
+	err = r.handleProvisionClaim(request.NamespacedName, obc, class)
 
 	// If handleReconcile() errors, the request will be re-queued.  In the distant future, we will likely want some ignorable error types in order to skip re-queuing
 	return done, err
@@ -127,7 +126,7 @@ func (r *ObjectBucketClaimReconciler) Reconcile(request reconcile.Request) (reco
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass, newBkt bool) error {
+func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
@@ -144,12 +143,17 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
+	// If the storage class contains the name of the bucket then we create access
+	// to an existing bucket. If the bucket name does not appear in the storage
+	// class then we dynamically provision a new bucket.
+	isDynamicProvisioning := isNewBucketByClass(class)
+
 	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
 	// It is assumed that if the get claim fails, no resources were generated to begin with.
 	defer func() {
 		if err != nil {
 			log.Error(err, "cleaning up reconcile artifacts")
-			if !pErr.IsBucketExists(err) && ob != nil && newBkt {
+			if !pErr.IsBucketExists(err) && ob != nil && isDynamicProvisioning {
 				log.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
 				if err := r.provisioner.Delete(ob); err != nil {
 					log.Error(err, "error deleting bucket")
@@ -160,7 +164,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}()
 
 	bucketName := class.Parameters[v1alpha1.StorageClassBucket]
-	if newBkt {
+	if isDynamicProvisioning {
 		bucketName, err = composeBucketName(obc)
 		if err != nil {
 			return fmt.Errorf("error composing bucket name: %v", err)
@@ -182,12 +186,12 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 	}
 
 	verb := "provisioning"
-	if !newBkt {
+	if !isDynamicProvisioning {
 		verb = "granting access to"
 	}
 	logD.Info(verb, "bucket", options.BucketName)
 
-	if newBkt {
+	if isDynamicProvisioning {
 		ob, err = r.provisioner.Provision(options)
 	} else {
 		ob, err = r.provisioner.Grant(options)
@@ -200,8 +204,11 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 
 	setObjectBucketName(ob, key)
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
+	ob.Spec.ClaimRef, err = claimRefForKey(key, r.internalClient)
+	ob.SetFinalizers([]string{finalizer})
+	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 
-	if ob, err = createObjectBucket(ob, r.Client, r.retryInterval, r.retryTimeout); err != nil {
+	if ob, err = createObjectBucket(ob, r.internalClient, r.retryInterval, r.retryTimeout); err != nil {
 		return err
 	}
 
@@ -257,15 +264,18 @@ func (r *ObjectBucketClaimReconciler) handleDeleteClaim(key client.ObjectKey) er
 		log.Error(nil, "got nil objectBucket, assuming deletion complete")
 		return nil
 	}
+	// see if obc delete is for a newly provisioned bkt vs an existing bkt
+	isDynamicallyProvisioned := isNewBucketByOB(r.internalClient, ob)
 
-	class, err := storageClassForOB(ob, r.internalClient)
-	if err != nil || class == nil {
-		return fmt.Errorf("error getting storageclass from OB %q", ob.Name)
+	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
+	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
+	if ob.Spec.ReclaimPolicy == nil {
+		log.Error(nil, "got null reclaimPolicy", "ob", ob.Name)
+		return nil
 	}
-	newBkt := scForNewBkt(class)
-
+	reclaim := *ob.Spec.ReclaimPolicy
 	// decide whether Delete or Revoke is called
-	if newBkt {
+	if isDynamicallyProvisioned && reclaim == corev1.PersistentVolumeReclaimDelete  {
 		if err = r.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
@@ -296,7 +306,7 @@ func (r *ObjectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectK
 	obKey := client.ObjectKey{
 		Name: fmt.Sprintf(objectBucketNameFormat, key.Namespace, key.Name),
 	}
-	err := r.Client.Get(r.Ctx, obKey, ob)
+	err := r.Client.Get(r.ctx, obKey, ob)
 	if err != nil {
 		return nil, fmt.Errorf("error listing object buckets: %v", err)
 	}
@@ -305,7 +315,7 @@ func (r *ObjectBucketClaimReconciler) objectBucketForClaimKey(key client.ObjectK
 
 func (r *ObjectBucketClaimReconciler) updateObjectBucketClaimPhase(obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase) (*v1alpha1.ObjectBucketClaim, error) {
 	obc.Status.Phase = phase
-	err := r.Client.Update(r.Ctx, obc)
+	err := r.Client.Update(r.ctx, obc)
 	if err != nil {
 		return nil, fmt.Errorf("error updating phase: %v", err)
 	}

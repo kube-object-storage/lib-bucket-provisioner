@@ -116,7 +116,7 @@ func TestNewObjectBucketClaimReconciler(t *testing.T) {
 		tt.args.c = buildFakeInternalClient(t)
 
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewObjectBucketClaimReconciler(tt.args.c.Client, tt.args.c.Scheme, tt.args.name, tt.args.provisioner, tt.args.options)
+			got := NewObjectBucketClaimReconciler(tt.args.c.Client, tt.args.c.scheme, tt.args.name, tt.args.provisioner, tt.args.options)
 			if n := strings.ToLower(tt.args.name); got.provisionerName != n {
 				t.Errorf("ObjectBucketClaimReconciler.NewObjectBucketClaimReconciler() name = %v, want %v", got.provisionerName, tt.want.provisionerName)
 			}

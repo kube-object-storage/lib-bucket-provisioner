@@ -4,15 +4,17 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
@@ -28,16 +30,36 @@ func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	return true
 }
 
-// Return true if this storage class was for a new bkt vs an existing bkt.
-// referenced storage class.
-func scForNewBkt(sc *storagev1.StorageClass) bool {
+func claimRefForKey(key client.ObjectKey, ic *internalClient) (types.UID, error) {
+	claim, err := claimForKey(key, ic)
+	if err != nil {
+		return "", err
+	}
+	return claim.UID, nil
+}
+
+// Return true if this storage class is for a new bucket vs an existing bucket.
+func isNewBucketByClass(sc *storagev1.StorageClass) bool {
 	return len(sc.Parameters[v1alpha1.StorageClassBucket]) == 0
+}
+
+// Return true if this OB is for a new bucket vs an existing bucket.
+func isNewBucketByOB(ic *internalClient, ob *v1alpha1.ObjectBucket) bool {
+	// temp: get bucket name from OB's storage class
+	class, err := storageClassForOB(ob, ic)
+	if err != nil || class == nil {
+		log.Info("ERROR: unable to get storageclass", "ob", ob)
+		logD.Info("ERROR: returning false for `isNewBucketByOB`")
+		return false
+	}
+	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
+	// return ob.Spec.DynamicProivisioned
 }
 
 func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.ObjectBucketClaim, err error) {
 	logD.Info("getting claim for key")
 	obc = &v1alpha1.ObjectBucketClaim{}
-	if err = ic.Client.Get(ic.Ctx, key, obc); err != nil {
+	if err = ic.Get(ic.ctx, key, obc); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, err
 		}
@@ -49,14 +71,14 @@ func claimForKey(key client.ObjectKey, ic *internalClient) (obc *v1alpha1.Object
 func configMapForClaimKey(key client.ObjectKey, ic *internalClient) (cm *corev1.ConfigMap, err error) {
 	logD.Info("getting configMap for key", "key", key)
 	cm = &corev1.ConfigMap{}
-	err = ic.Client.Get(ic.Ctx, key, cm)
+	err = ic.Get(ic.ctx, key, cm)
 	return
 }
 
 func secretForClaimKey(key client.ObjectKey, ic *internalClient) (sec *corev1.Secret, err error) {
 	logD.Info("getting secret for key", "key", key)
 	sec = &corev1.Secret{}
-	err = ic.Client.Get(ic.Ctx, key, sec)
+	err = ic.Get(ic.ctx, key, sec)
 	return
 }
 
@@ -67,7 +89,7 @@ func setObjectBucketName(ob *v1alpha1.ObjectBucket, key client.ObjectKey) {
 
 func updateClaim(obc *v1alpha1.ObjectBucketClaim, c *internalClient) error {
 	logD.Info("updating claim", "name", fmt.Sprintf("%s/%s", obc.Namespace, obc.Name))
-	err := c.Client.Update(c.Ctx, obc)
+	err := c.Update(c.ctx, obc)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return err
@@ -108,7 +130,7 @@ func generateBucketName(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
 }
 
-func storageClassForClaim(obc *v1alpha1.ObjectBucketClaim, ic *internalClient) (*storagev1.StorageClass, error) {
+func storageClassForClaim(ic *internalClient, obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
 	logD.Info("getting storageClass for claim")
 	if obc == nil {
 		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
@@ -120,8 +142,8 @@ func storageClassForClaim(obc *v1alpha1.ObjectBucketClaim, ic *internalClient) (
 
 	class := &storagev1.StorageClass{}
 	logD.Info("getting storage class", "name", obc.Spec.StorageClassName)
-	err := ic.Client.Get(
-		ic.Ctx,
+	err := ic.Get(
+		ic.ctx,
 		types.NamespacedName{
 			Namespace: "",
 			Name:      obc.Spec.StorageClassName,
@@ -149,7 +171,7 @@ func storageClassForOB(ob *v1alpha1.ObjectBucket, ic *internalClient) (*storagev
 	scKey := client.ObjectKey{
 		Name: className,
 	}
-	err := ic.Client.Get(ic.Ctx, scKey, class)
+	err := ic.Get(ic.ctx, scKey, class)
 	if err != nil {
 		return nil, fmt.Errorf("error getting storageclass %q: %v", className, err)
 	}
@@ -158,7 +180,7 @@ func storageClassForOB(ob *v1alpha1.ObjectBucket, ic *internalClient) (*storagev
 	return class, nil
 }
 
-func hasFinalizer(obj v1.Object) bool {
+func hasFinalizer(obj metav1.Object) bool {
 	logD.Info("checking for finalizer", "value", finalizer, "object", obj.GetName())
 	for _, f := range obj.GetFinalizers() {
 		if f == finalizer {
@@ -170,7 +192,7 @@ func hasFinalizer(obj v1.Object) bool {
 	return false
 }
 
-func removeFinalizer(obj v1.Object, ic *internalClient) error {
+func removeFinalizer(obj metav1.Object, ic *internalClient) error {
 	logD.Info("removing finalizer from object", "name", obj.GetName())
 	runObj, ok := obj.(runtime.Object)
 	if !ok {
@@ -182,7 +204,7 @@ func removeFinalizer(obj v1.Object, ic *internalClient) error {
 		if f == finalizer {
 			logD.Info("found finalizer, deleting and updating API")
 			obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
-			err := ic.Client.Update(ic.Ctx, runObj)
+			err := ic.Update(ic.ctx, runObj)
 			if err != nil {
 				return err
 			}

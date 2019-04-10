@@ -64,8 +64,8 @@ func buildFakeInternalClient(t *testing.T, initObjs ...runtime.Object) *internal
 		t.Errorf("error adding storage/v1 scheme: %v", err)
 	}
 	return &internalClient{
-		Ctx:    context.Background(),
+		ctx:    context.Background(),
 		Client: fake.NewFakeClientWithScheme(scheme, initObjs...),
-		Scheme: scheme,
+		scheme: scheme,
 	}
 }
