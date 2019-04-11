@@ -141,8 +141,9 @@ func NewProvisioner(
 }
 
 // Run starts the claim and bucket controllers.
-func (p *Controller) Run() {
+func (p *Controller) Run() (err error) {
 	defer klog.Flush()
 	log.Info("Starting manager", "provisioner", p.Name)
-	go p.Manager.Start(signals.SetupSignalHandler())
+	err = p.Manager.Start(signals.SetupSignalHandler())
+	return
 }

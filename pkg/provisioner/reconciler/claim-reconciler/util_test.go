@@ -115,7 +115,7 @@ func TestStorageClassForClaim(t *testing.T) {
 				}
 			}
 
-			got, err := storageClassForClaim(tt.args.obc, tt.args.client)
+			got, err := storageClassForClaim(tt.args.client, tt.args.obc)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("StorageClassForClaim() error = %v, wantErr %v", err, tt.wantErr)
 				return
