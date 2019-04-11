@@ -213,6 +213,9 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
+	obc.Spec.ObjectBucketName = ob.Name
+	obc.Spec.BucketName = bucketName
+
 	if secret, err = createSecret(obc, ob.Spec.Authentication, r.Client, r.retryInterval, r.retryTimeout); err != nil {
 		return err
 	}
@@ -221,8 +224,7 @@ func (r *ObjectBucketClaimReconciler) handleProvisionClaim(key client.ObjectKey,
 		return err
 	}
 
-	obc.Spec.ObjectBucketName = ob.Name
-	obc.Spec.BucketName = bucketName
+	// Only update the claim if the secret and configMap succeed
 	if err = updateClaim(obc, r.internalClient); err != nil {
 		return err
 	}

@@ -83,7 +83,7 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			Finalizers: []string{finalizer},
 		},
 		Data: map[string]string{
-			bucketName:      obc.Spec.BucketName,
+			bucketName:      ep.BucketName,
 			bucketHost:      ep.BucketHost,
 			bucketPort:      strconv.Itoa(ep.BucketPort),
 			bucketSSL:       strconv.FormatBool(ep.SSL),
