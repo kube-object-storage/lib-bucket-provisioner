@@ -15,11 +15,11 @@ before_script:
   - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.16.0 && golangci-lint --version
 
 script:
-  - ./hack/go.sh preflight
+  - ./hack/go.sh ci-checks
 
 deploy:
   - provider: script
-    script: ./hack/go.sh preflight
+    script: ./hack/go.sh ci-checks
     on:
       branch: master
 
