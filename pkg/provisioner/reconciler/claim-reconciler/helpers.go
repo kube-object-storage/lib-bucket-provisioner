@@ -87,20 +87,6 @@ func setObjectBucketName(ob *v1alpha1.ObjectBucket, key client.ObjectKey) {
 	ob.Name = fmt.Sprintf(objectBucketNameFormat, key.Namespace, key.Name)
 }
 
-func updateClaim(obc *v1alpha1.ObjectBucketClaim, c *internalClient) error {
-	logD.Info("updating claim", "name", fmt.Sprintf("%s/%s", obc.Namespace, obc.Name))
-	err := c.Update(c.ctx, obc)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return err
-		}
-		return fmt.Errorf("error updating OBC: %v", err)
-
-	}
-	logD.Info("claim update successful")
-	return nil
-}
-
 func composeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
 	logD.Info("determining bucket name")
 	// XOR BucketName and GenerateBucketName

@@ -238,3 +238,51 @@ func deleteObjectBucket(ob *v1alpha1.ObjectBucket, ic *internalClient) error {
 	}
 	return nil
 }
+
+func updateClaim(ic *internalClient, obc *v1alpha1.ObjectBucketClaim, retryInterval, retryTimeout time.Duration) error {
+	err := wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
+		// err is a shadow var
+		err = ic.Status().Update(ic.ctx, obc)
+		if err == nil {
+			return true, nil
+		}
+		if errors.IsNotFound(err) {
+			return true, err
+		}
+		log.Error(err, "possibly intermittent, retrying")
+		return false, nil
+	})
+	return err
+}
+
+func updateObjectBucketClaimPhase(ic *internalClient, obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucketClaim, error) {
+	obc.Status.Phase = phase
+	err := updateStatus(ic, obc, retryInterval, retryTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error updating phase: %v", err)
+	}
+	return obc, nil
+}
+
+func updateObjectBucketPhase(ic *internalClient, ob *v1alpha1.ObjectBucket, phase v1alpha1.ObjectBucketStatusPhase, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucket, error) {
+	ob.Status.Phase = phase
+	err := updateStatus(ic, ob, retryInterval, retryTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("error updating phase: %v", err)
+	}
+	return ob, nil
+}
+
+func updateStatus(ic *internalClient, o runtime.Object, i, t time.Duration) error {
+	return wait.PollImmediate(i, t, func() (done bool, err error) {
+		err = ic.Status().Update(ic.ctx, o)
+		if err == nil {
+			return true, nil
+		}
+		if errors.IsNotFound(err) {
+			return true, err
+		}
+		log.Error(err, "possibly intermittent, retrying")
+		return false, nil
+	})
+}

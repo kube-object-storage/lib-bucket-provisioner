@@ -28,6 +28,6 @@ func init() {
 
 // setLoggerWith request overwrites log and logD with a new logger.  The passed in request is injected into the loggers.
 func setLoggersWithRequest(request reconcile.Request) {
-	log = klogr.New().WithValues("request", request)
-	logD = klogr.New().WithValues("request", request)
+	log = klogr.New().WithValues("request", request.String())
+	logD = klogr.New().WithValues("request", request.String())
 }

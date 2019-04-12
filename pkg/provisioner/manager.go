@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis"
@@ -41,6 +42,9 @@ var (
 func initLoggers() {
 	log = klogr.New().WithName(api.Domain + "/provisioner-manager")
 	logD = log.V(1)
+
+	logf.SetLogger(log)
+
 }
 
 func initFlags() {
