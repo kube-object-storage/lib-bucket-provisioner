@@ -26,16 +26,15 @@ model will see bucket provisioning as intuitive.
 As a result, `kubectl` will be easy to use to create, list, and manage buckets and claims.
 + Create an external library, similar to what exists today in Kubernetes, to ensure the contract between the app pod and bucket store is guaranteed.
 + Rely on native Storage Classes to define the object-store and provisioner.
-+ Be unopinionated about the underlying object-store.
-+ Give provisioners a simple, flexible interface with minimal constraints.
++ Be unopinionated about the underlying object-store and at the same time provide a flexible API such that provisioner specific features can be supported. Note: the `Parameters` stanza of StorageClasses provide this flexibility today for Kubernetes external storage providers.
 + Cause the app pod to wait until the target bucket has been created and is accessible.
 + Present similar user and admin experiences for both _greenfield_ (new) and _brownfield_ (existing) bucket provisioning.
 
 ### Non-Goals
 + Update native Kubernetes PVC-PV API to support object buckets for the following reasons:
-  + very long acceptance cadence to get core API enhanements into Kubernetes (2 years+)
-  + Kubernetes is strategically reducing the size of its core and moving pieces out of core into CRDs
-  + buckets are inherently different from files/directories and blocks in that there are no "attach" nor "mount" steps that would need to be performed by the kubelet
+  + very long acceptance cycle to get core API enhanements into Kubernetes (2 years+).
+  + Kubernetes is strategically reducing the size of its core. CSI is an example of moving the storage "data plane" outside of Kuernetes, and is analgous in concept to this bucket provisioning design.
+  + buckets are inherently different from files/directories and blocks in that there are no "attach" nor "mount" steps that would need to be performed by the kubelet.
 + Handle the small percentage of apps that will not be portable due to use of non-compatible object-store features.
 For example, an app that uses a feature in object-store-1 that is not provided in object-store-2, and the app now is tied to an object-store-2 endpoint.
 
