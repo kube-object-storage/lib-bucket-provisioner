@@ -1,5 +1,5 @@
 ## Bucket Provisioning Library
-This repo is a temporary placeholder for a general purpose, object-store bucket provisioning library, very similar to the Kubernetes [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go) library.
+This repo is a temporary placeholder for a general purpose object-store bucket provisioning library, very similar to the Kubernetes [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go) library.
 The goal is to eventually move this repo to a Kubernetes repo within _sig-storage/_.
 
 ### Repo Layout
