@@ -15,7 +15,7 @@
 .idea*
 
 # vendor and dep lock file
-vendor/
-.vendor-orig/
-.vendor-new/
+/vendor/
+/.vendor-orig/
+/.vendor-new/
 Gopkg.lock
