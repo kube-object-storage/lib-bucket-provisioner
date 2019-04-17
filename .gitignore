@@ -13,3 +13,7 @@
 
 # IDE config
 .idea*
+
+# vendor and dep lock file
+vendor/
+Gopkg.lock
