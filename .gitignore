@@ -16,4 +16,6 @@
 
 # vendor and dep lock file
 vendor/
+.vendor-orig/
+.vendor-new/
 Gopkg.lock
