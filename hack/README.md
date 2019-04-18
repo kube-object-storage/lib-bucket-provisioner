@@ -4,6 +4,9 @@ Clone this repo with
 
 `go get -d github.com/yard-turkey/lib-bucket-provisioner`
 
+**Note** the _vendor/_ directory is ignored and thus not part of this repo.
+Library consumers need to use their dep management tool to create the dependencies.
+
 Then install the dependencies
 
 `dep ensure -v`
