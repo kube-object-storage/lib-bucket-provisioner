@@ -14,4 +14,4 @@ required = [
 
 [[constraint]]
   name = "sigs.k8s.io/controller-runtime"
-  version = "v0.1.10"
+  branch = "master" 
