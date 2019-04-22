@@ -12,6 +12,6 @@ required = [
   name = "k8s.io/code-generator"
   version = "kubernetes-1.13.1"
 
-[[constraint]]
-  name = "sigs.k8s.io/controller-runtime"
-  branch = "master" 
+#[[constraint]]
+#  name = "sigs.k8s.io/controller-runtime"
+#  branch = "master" 
