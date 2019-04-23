@@ -16,6 +16,7 @@ import (
 type Manager struct {
 	Name        string
 	Provisioner api.Provisioner
+	// TODO context?
 }
 
 func initLoggers() {
@@ -54,18 +55,17 @@ func NewProvisioner(
 	initFlags()
 	initLoggers()
 
-
-
-}
-
-// Run starts the claim and bucket controllers.
-func (p *Controller) Run() (err error) {
-	defer klog.Flush()
-	log.Info("Starting manager", "provisioner", p.Name)
+	// TODO create the controller!
 
 	return
 }
 
-func handleSignals(){
 
+// TODO start the controller!
+// Run starts the claim and bucket controllers.
+func (c *Controller) Run() (err error) {
+	defer klog.Flush()
+	log.Info("Starting manager", "provisioner", p.Name)
+
+	return
 }

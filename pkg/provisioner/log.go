@@ -4,8 +4,6 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/klog/klogr"
 
-
-
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
@@ -27,7 +25,7 @@ func init() {
 }
 
 // setLoggerWith request overwrites log and logD with a new logger.  The passed in request is injected into the loggers.
-func setLoggersWithRequest(request reconcile.Request) {
-	log = klogr.New().WithValues("request", request.String())
-	logD = klogr.New().WithValues("request", request.String())
+func setLoggersWithRequest(key string) {
+	log = klogr.New().WithValues("key", key)
+	logD = klogr.New().WithValues("key", key)
 }

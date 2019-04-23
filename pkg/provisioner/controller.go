@@ -364,24 +364,24 @@ func (c *Controller) handleDeleteClaim(key string) error {
 		return nil
 	}
 
-	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, r.retryInterval, r.retryTimeout)
+	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, defaultRetryBaseInterval, defaultRetryTimeout)
 	if err != nil {
 		return err
 	}
 
 	// decide whether Delete or Revoke is called
-	if isNewBucketByOB(r.internalClient, ob) && *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimDelete {
-		if err = r.provisioner.Delete(ob); err != nil {
+	if isNewBucketByOB(c.clientset, ob) && *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimDelete {
+		if err = c.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
 		}
 	} else {
-		if err = r.provisioner.Revoke(ob); err != nil {
+		if err = c.provisioner.Revoke(ob); err != nil {
 			return fmt.Errorf("provisioner error revoking access to bucket %v", err)
 		}
 	}
 
-	if err = deleteObjectBucket(ob, r.internalClient); err != nil {
+	if err = deleteObjectBucket(ob, c.libClientset); err != nil {
 		if errors.IsNotFound(err) {
 			log.Error(err, "ObjectBucket vanished during deprovisioning, assuming deletion complete")
 		} else {

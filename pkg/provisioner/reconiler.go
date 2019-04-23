@@ -1,4 +1,4 @@
-// /*package provisioner
+package provisioner
 //
 // import (
 // 	"context"
