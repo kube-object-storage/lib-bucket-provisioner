@@ -2,16 +2,16 @@ package provisioner
 
 import (
 	"fmt"
-	"github.com/yard-turkey/generic-s3-bucket-apis/pkg/provisioner"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
-	pErr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
+
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
 	informers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io/v1alpha1"
 	listers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/listers/objectbucket.io/v1alpha1"
+	pErr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -35,7 +35,7 @@ type Controller struct {
 	obHasSynced  cache.InformerSynced
 	queue        workqueue.RateLimitingInterface
 
-	provisioner     provisioner.Provisioner
+	provisioner     api.Provisioner
 	provisionerName string
 }
 
@@ -335,9 +335,9 @@ func (c *Controller) handleDeleteClaim(key string) error {
 		log.Error(err, "could not get configMap")
 	}
 
-	secret, err := secretForClaimKey(key, r.internalClient)
+	secret, err := secretForClaimKey(key, c.clientset)
 	if err == nil {
-		err = deleteSecret(secret, r.internalClient)
+		err = deleteSecret(secret, c.clientset)
 		if err != nil {
 			return err
 		}
@@ -345,7 +345,7 @@ func (c *Controller) handleDeleteClaim(key string) error {
 		log.Error(err, "could not get secret")
 	}
 
-	ob, err := r.objectBucketForClaimKey(key)
+	ob, err := c.objectBucketForClaimKey(key)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Error(err, "objectBucket not found, assuming it was already deleted")
@@ -364,7 +364,7 @@ func (c *Controller) handleDeleteClaim(key string) error {
 		return nil
 	}
 
-	ob, err = updateObjectBucketPhase(r.internalClient, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, r.retryInterval, r.retryTimeout)
+	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, r.retryInterval, r.retryTimeout)
 	if err != nil {
 		return err
 	}
