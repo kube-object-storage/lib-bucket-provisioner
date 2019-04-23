@@ -2,6 +2,7 @@ package provisioner
 
 import (
 	"fmt"
+
 	"github.com/google/uuid"
 	"k8s.io/client-go/tools/cache"
 
@@ -105,7 +106,6 @@ func setObjectBucketName(ob *v1alpha1.ObjectBucket, key string) {
 	}
 	ob.Name = obName
 }
-
 
 func obNameFromClaimKey(key string) (string, error) {
 	ns, name, err := cache.SplitMetaNamespaceKey(key)

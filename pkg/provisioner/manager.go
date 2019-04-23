@@ -2,20 +2,25 @@ package provisioner
 
 import (
 	"flag"
-	"k8s.io/klog"
 
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/klog"
 	"k8s.io/klog/klogr"
 
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
+	informers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
-// Controller is the first iteration of our internal provisioning
+// controller is the first iteration of our internal provisioning
 // controller.  The passed-in bucket provisioner, coded by the user of the
 // library, is stored for later Provision and Delete calls.
-type Manager struct {
-	Name        string
-	Provisioner api.Provisioner
+type Provisioner struct {
+	Name            string
+	Provisioner     api.Provisioner
+	claimController Controller
+	informerFactory informers.SharedInformerFactory
 	// TODO context?
 }
 
@@ -50,22 +55,36 @@ func NewProvisioner(
 	provisionerName string,
 	provisioner api.Provisioner,
 	namespace string,
-) (*Controller, error) {
+) (*Provisioner, error) {
 
 	initFlags()
 	initLoggers()
 
-	// TODO create the controller!
+	libClientset := versioned.NewForConfigOrDie(cfg)
+	clientset := kubernetes.NewForConfigOrDie(cfg)
 
-	return
+	informerFactory := informers.NewSharedInformerFactory(libClientset, 0)
+
+	p := &Provisioner{
+		Name: provisionerName,
+		claimController: NewController(provisionerName, provisioner, clientset, libClientset,
+			informerFactory.Objectbucket().V1alpha1().ObjectBucketClaims(),
+			informerFactory.Objectbucket().V1alpha1().ObjectBuckets()),
+	}
+
+	return p, nil
 }
 
-
-// TODO start the controller!
 // Run starts the claim and bucket controllers.
-func (c *Controller) Run() (err error) {
+func (p *Provisioner) Run(stopCh <-chan struct{}) (err error) {
 	defer klog.Flush()
-	log.Info("Starting manager", "provisioner", p.Name)
+	log.Info("starting provisioner controller")
 
+	p.informerFactory.Start(stopCh)
+
+	go func() {
+		err = p.claimController.Start(stopCh)
+	}()
+	<-stopCh
 	return
 }

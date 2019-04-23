@@ -2,29 +2,33 @@ package provisioner
 
 import (
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
+	"time"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
 	informers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io/v1alpha1"
 	listers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/listers/objectbucket.io/v1alpha1"
+	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 	pErr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
-	corev1 "k8s.io/api/core/v1"
-	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/util/workqueue"
-	"time"
 )
 
-// Provisioner is a CRD Controller responsible for executing the Reconcile() function in response to OB and OBC events.
-type Controller struct {
+type Controller interface {
+	Start(<-chan struct{}) error
+}
+
+// Provisioner is a CRD controller responsible for executing the Reconcile() function in response to OB and OBC events.
+type controller struct {
 	c            dynamic.Interface
 	clientset    kubernetes.Interface
 	libClientset versioned.Interface
@@ -39,8 +43,10 @@ type Controller struct {
 	provisionerName string
 }
 
-func NewController(provisionerName string, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *Controller {
-	ctrl := &Controller{
+var _ Controller = &controller{}
+
+func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *controller {
+	ctrl := &controller{
 		clientset:       clientset,
 		libClientset:    crdClientSet,
 		obcLister:       obcInformer.Lister(),
@@ -50,6 +56,7 @@ func NewController(provisionerName string, clientset kubernetes.Interface, crdCl
 		obHasSynced:     obInformer.Informer().HasSynced,
 		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 		provisionerName: provisionerName,
+		provisioner:     provisioner,
 	}
 
 	obcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -72,7 +79,7 @@ func NewController(provisionerName string, clientset kubernetes.Interface, crdCl
 	return ctrl
 }
 
-func (c *Controller) enqueueOBC(obj interface{}) {
+func (c *controller) enqueueOBC(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -82,11 +89,11 @@ func (c *Controller) enqueueOBC(obj interface{}) {
 	c.queue.AddRateLimited(key)
 }
 
-func (c *Controller) Start(stopCh <-chan struct{}) error {
+func (c *controller) Start(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
-	if ! cache.WaitForCacheSync(stopCh, c.obcHasSynced, c.obHasSynced) {
+	if !cache.WaitForCacheSync(stopCh, c.obcHasSynced, c.obHasSynced) {
 		return fmt.Errorf("failed to waith for caches to sync ")
 	}
 	go wait.Until(c.runWorker, time.Second, stopCh)
@@ -95,12 +102,12 @@ func (c *Controller) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (c *Controller) runWorker() {
+func (c *controller) runWorker() {
 	for c.processNextItemInQueue() {
 	}
 }
 
-func (c *Controller) processNextItemInQueue() bool {
+func (c *controller) processNextItemInQueue() bool {
 	obj, shutdown := c.queue.Get()
 	if shutdown {
 		return false
@@ -152,7 +159,7 @@ func (c *Controller) processNextItemInQueue() bool {
 // Reconcile implements the Reconciler interface.  This function contains the business logic of the
 // OBC controller.  Currently, the process strictly serves as a POC for an OBC controller and is
 // extremely fragile.
-func (c *Controller) syncHandler(key string) error {
+func (c *controller) syncHandler(key string) error {
 
 	logD.Info("new Reconcile iteration")
 
@@ -205,7 +212,7 @@ func (c *Controller) syncHandler(key string) error {
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
+func (c *controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
@@ -321,7 +328,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	return nil
 }
 
-func (c *Controller) handleDeleteClaim(key string) error {
+func (c *controller) handleDeleteClaim(key string) error {
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
 
@@ -391,11 +398,11 @@ func (c *Controller) handleDeleteClaim(key string) error {
 	return nil
 }
 
-func (c *Controller) supportedProvisioner(provisioner string) bool {
+func (c *controller) supportedProvisioner(provisioner string) bool {
 	return provisioner == c.provisionerName
 }
 
-func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
+func (c *controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
 	logD.Info("getting objectBucket for key", "key", key)
 	name, err := obNameFromClaimKey(key)
 	if err != nil {
@@ -408,7 +415,7 @@ func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket
 	return ob, nil
 }
 
-func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
+func (c *controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
 	if err := deleteObjectBucket(ob, c.libClientset); err != nil {
 		log.Error(err, "error deleting objectBucket")
 	}
