@@ -62,11 +62,7 @@ func NewController(provisionerName string, provisioner api.Provisioner, clientse
 	obcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: ctrl.enqueueOBC,
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			oldObc := oldObj.(*v1alpha1.ObjectBucketClaim)
-			newObc := newObj.(*v1alpha1.ObjectBucketClaim)
-			if oldObc.ResourceVersion != newObc.ResourceVersion {
-				ctrl.enqueueOBC(newObj)
-			}
+			// noop
 		},
 		DeleteFunc: func(obj interface{}) {
 			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
