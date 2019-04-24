@@ -66,7 +66,8 @@ func NewProvisioner(
 	informerFactory := informers.NewSharedInformerFactory(libClientset, 0)
 
 	p := &Provisioner{
-		Name: provisionerName,
+		Name:            provisionerName,
+		informerFactory: informerFactory,
 		claimController: NewController(provisionerName, provisioner, clientset, libClientset,
 			informerFactory.Objectbucket().V1alpha1().ObjectBucketClaims(),
 			informerFactory.Objectbucket().V1alpha1().ObjectBuckets()),
