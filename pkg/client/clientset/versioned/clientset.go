@@ -28,8 +28,6 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	ObjectbucketV1alpha1() objectbucketv1alpha1.ObjectbucketV1alpha1Interface
-	// Deprecated: please explicitly pick a version if possible.
-	Objectbucket() objectbucketv1alpha1.ObjectbucketV1alpha1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -41,12 +39,6 @@ type Clientset struct {
 
 // ObjectbucketV1alpha1 retrieves the ObjectbucketV1alpha1Client
 func (c *Clientset) ObjectbucketV1alpha1() objectbucketv1alpha1.ObjectbucketV1alpha1Interface {
-	return c.objectbucketV1alpha1
-}
-
-// Deprecated: Objectbucket retrieves the default version of ObjectbucketClient.
-// Please explicitly pick a version.
-func (c *Clientset) Objectbucket() objectbucketv1alpha1.ObjectbucketV1alpha1Interface {
 	return c.objectbucketV1alpha1
 }
 
