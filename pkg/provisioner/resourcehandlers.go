@@ -110,6 +110,9 @@ func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryI
 
 func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
 	secret, err := newCredentialsSecret(obc, auth)
+	if err != nil {
+		return nil, err
+	}
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
 		secret, err = c.CoreV1().Secrets(obc.Namespace).Create(secret)
@@ -129,6 +132,9 @@ func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication
 
 func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.ConfigMap, error) {
 	configMap, err := newBucketConfigMap(ep, obc)
+	if err != nil {
+		return nil, err
+	}
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
 		configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(configMap)
