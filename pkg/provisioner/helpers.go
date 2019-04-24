@@ -99,11 +99,11 @@ func secretForClaimKey(key string, c kubernetes.Interface) (sec *corev1.Secret, 
 }
 
 func setObjectBucketName(ob *v1alpha1.ObjectBucket, key string) {
-	logD.Info("setting OB name", "name", ob.Name)
 	obName, err := obNameFromClaimKey(key)
 	if err != nil {
 		return
 	}
+	logD.Info("setting OB name", "name", ob.Name)
 	ob.Name = obName
 }
 
