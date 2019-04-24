@@ -13,13 +13,13 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
-// controller is the first iteration of our internal provisioning
-// controller.  The passed-in bucket provisioner, coded by the user of the
+// Controller is the first iteration of our internal provisioning
+// Controller.  The passed-in bucket provisioner, coded by the user of the
 // library, is stored for later Provision and Delete calls.
 type Provisioner struct {
 	Name            string
 	Provisioner     api.Provisioner
-	claimController Controller
+	claimController controller
 	informerFactory informers.SharedInformerFactory
 	// TODO context?
 }
@@ -46,7 +46,7 @@ func initFlags() {
 }
 
 // NewProvisioner should be called by importers of this library to
-// instantiate a new provisioning controller. This controller will
+// instantiate a new provisioning Controller. This Controller will
 // respond to Add / Update / Delete events by calling the passed-in
 // provisioner's Provisioner and Delete methods.
 // The Provisioner will be restrict to operating only to the namespace given
@@ -79,7 +79,7 @@ func NewProvisioner(
 // Run starts the claim and bucket controllers.
 func (p *Provisioner) Run(stopCh <-chan struct{}) (err error) {
 	defer klog.Flush()
-	log.Info("starting provisioner controller")
+	log.Info("starting provisioner Controller")
 
 	p.informerFactory.Start(stopCh)
 

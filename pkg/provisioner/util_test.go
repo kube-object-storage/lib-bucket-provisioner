@@ -1,8 +1,8 @@
 package provisioner
 
 import (
-	"context"
 	"encoding/json"
+	"k8s.io/client-go/kubernetes/fake"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -13,10 +13,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	externalFake "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned/fake"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestStorageClassForClaim(t *testing.T) {
@@ -34,8 +33,9 @@ func TestStorageClassForClaim(t *testing.T) {
 	}
 
 	type args struct {
-		obc    *v1alpha1.ObjectBucketClaim
-		client *internalClient
+		obc       *v1alpha1.ObjectBucketClaim
+		client    *fake.Clientset
+		extClient *externalFake.Clientset
 	}
 
 	tests := []struct {
@@ -47,8 +47,9 @@ func TestStorageClassForClaim(t *testing.T) {
 		{
 			name: "nil OBC ptr",
 			args: args{
-				obc:    nil,
-				client: buildFakeInternalClient(t),
+				obc:       nil,
+				client:    fake.NewSimpleClientset(),
+				extClient: externalFake.NewSimpleClientset(),
 			},
 			want:    nil,
 			wantErr: true,
@@ -62,7 +63,8 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: "",
 					},
 				},
-				client: buildFakeInternalClient(t),
+				client:    fake.NewSimpleClientset(),
+				extClient: externalFake.NewSimpleClientset(),
 			},
 			want:    nil,
 			wantErr: true,
@@ -75,7 +77,8 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: storageClassName,
 					},
 				},
-				client: buildFakeInternalClient(t),
+				client:    fake.NewSimpleClientset(),
+				extClient: externalFake.NewSimpleClientset(),
 			},
 			want: &storagev1.StorageClass{
 				TypeMeta: metav1.TypeMeta{},
@@ -94,7 +97,8 @@ func TestStorageClassForClaim(t *testing.T) {
 						StorageClassName: storageClassName,
 					},
 				},
-				client: buildFakeInternalClient(t),
+				client:    fake.NewSimpleClientset(),
+				extClient: externalFake.NewSimpleClientset(),
 			},
 			want:    nil,
 			wantErr: true,
@@ -103,14 +107,17 @@ func TestStorageClassForClaim(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			var err error
+			obc := tt.args.obc
 
-			if tt.args.obc != nil {
-				if err := tt.args.client.Client.Create(context.TODO(), tt.args.obc); err != nil {
+			if obc != nil {
+				if obc, err = tt.args.extClient.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Create(obc); err != nil {
 					t.Errorf("error pre-creating OBC: %v", err)
 				}
 			}
-			if tt.want != nil {
-				if err := tt.args.client.Client.Create(context.TODO(), tt.want); err != nil {
+			class := tt.want
+			if class != nil {
+				if class, err = tt.args.client.StorageV1().StorageClasses().Create(class); err != nil {
 					t.Errorf("error pre-creating StorageClass: %v", err)
 				}
 			}
@@ -227,74 +234,6 @@ func TestNewCredentialsSecret(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("NewCredentailsSecret() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestCreateUntilDefaultTimeout(t *testing.T) {
-
-	fakeClient := buildFakeInternalClient(t)
-
-	objMeta := metav1.ObjectMeta{
-		Namespace: "testNamespace",
-		Name:      "testName",
-	}
-
-	type args struct {
-		obj        runtime.Object
-		fakeClient *internalClient
-	}
-
-	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
-	}{
-		{
-			name: "nil runtime object",
-			args: args{
-				obj:        nil,
-				fakeClient: fakeClient,
-			},
-			wantErr: true,
-		},
-		{
-			name: "nil client",
-			args: args{
-				obj: &corev1.Pod{}, // arbitrary runtime.Object
-				fakeClient: func(fc internalClient) *internalClient {
-					fc.Client = nil
-					return &fc
-				}(*fakeClient),
-			},
-			wantErr: true,
-		},
-		{
-			name: "create a k8s.io/core object",
-			args: args{
-				obj: &corev1.Secret{
-					ObjectMeta: objMeta,
-				},
-				fakeClient: fakeClient,
-			},
-			wantErr: false,
-		},
-		{
-			name: "create a v1alpha1 custom object",
-			args: args{
-				obj: &v1alpha1.ObjectBucket{
-					ObjectMeta: objMeta,
-				},
-				fakeClient: fakeClient,
-			},
-			wantErr: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := createUntilDefaultTimeout(tt.args.obj, tt.args.fakeClient.Client, 1, 1); (err != nil) != tt.wantErr {
-				t.Errorf("CreateUntilDefaultTimeout() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
