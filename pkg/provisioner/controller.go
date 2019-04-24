@@ -295,15 +295,6 @@ func (c *controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 	ob.SetFinalizers([]string{finalizer})
 
-	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
-	}
-
-	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
-		return err
-	}
-
 	obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout)
 	if err != nil {
 		return err
@@ -317,6 +308,17 @@ func (c *controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	}
 
 	if configMap, err = createConfigMap(obc, ob.Spec.Endpoint, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+		return err
+	}
+
+	// NOTE: do not move ob create/update calls before secret or vice versa.  spec.Authentication is lost after create/update, which
+	// break secret creation
+	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+		return err
+	}
+
+	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout)
+	if err != nil {
 		return err
 	}
 
