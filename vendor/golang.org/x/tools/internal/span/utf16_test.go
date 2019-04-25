@@ -27,7 +27,7 @@ func TestUTF16(t *testing.T) {
 	c := span.NewContentConverter("test", input)
 	for line := 1; line <= 9; line++ {
 		runeColumn, runeChr := 0, 0
-		for chr := 1; chr <= 9; chr++ {
+		for chr := 1; chr <= 10; chr++ {
 			switch {
 			case chr <= line:
 				runeChr = chr
@@ -39,23 +39,56 @@ func TestUTF16(t *testing.T) {
 				runeChr = chr
 				runeColumn = chr + 2
 			}
-			p := span.Point{Line: line, Column: runeColumn}
+			p := span.NewPoint(line, runeColumn, (line-1)*13+(runeColumn-1))
 			// check conversion to utf16 format
-			gotChr := span.ToUTF16Column(c, p, input)
+			gotChr, err := span.ToUTF16Column(p, input)
+			if err != nil {
+				t.Error(err)
+			}
 			if runeChr != gotChr {
 				t.Errorf("ToUTF16Column(%v): expected %v, got %v", p, runeChr, gotChr)
 			}
-			// we deliberately delay setting the point's offset
-			p.Offset = (line-1)*13 + (p.Column - 1)
-			offset := c.ToOffset(p.Line, p.Column)
-			if p.Offset != offset {
-				t.Errorf("ToOffset(%v,%v): expected %v, got %v", p.Line, p.Column, p.Offset, offset)
+			offset, err := c.ToOffset(p.Line(), p.Column())
+			if err != nil {
+				t.Error(err)
+			}
+			if p.Offset() != offset {
+				t.Errorf("ToOffset(%v,%v): expected %v, got %v", p.Line(), p.Column(), p.Offset(), offset)
 			}
 			// and check the conversion back
-			gotPoint := span.FromUTF16Column(c, p.Line, chr, input)
-			if p != gotPoint {
-				t.Errorf("FromUTF16Column(%v,%v): expected %v, got %v", p.Line, chr, p, gotPoint)
+			lineStart := span.NewPoint(p.Line(), 1, p.Offset()-(p.Column()-1))
+			gotPoint, err := span.FromUTF16Column(lineStart, chr, input)
+			if err != nil {
+				t.Error(err)
 			}
+			if p != gotPoint {
+				t.Errorf("FromUTF16Column(%v,%v): expected %v, got %v", p.Line(), chr, p, gotPoint)
+			}
+		}
+	}
+}
+
+func TestUTF16Errors(t *testing.T) {
+	var input = []byte(`
+hello
+world
+`)[1:]
+	for _, test := range []struct {
+		line, col, offset int
+		want              string
+	}{
+		{
+			1, 6, 12,
+			"ToUTF16Column: length of line (5) is less than column (6)",
+		},
+		{
+			1, 6, 13,
+			"ToUTF16Column: offsets 8-13 outside file contents (12)",
+		},
+	} {
+		p := span.NewPoint(test.line, test.col, test.offset)
+		if _, err := span.ToUTF16Column(p, input); err == nil || err.Error() != test.want {
+			t.Errorf("expected %v, got %v", test.want, err)
 		}
 	}
 }
