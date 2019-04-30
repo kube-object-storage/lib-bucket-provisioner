@@ -75,8 +75,3 @@ var _ clientset.Interface = &Clientset{}
 func (c *Clientset) ObjectbucketV1alpha1() objectbucketv1alpha1.ObjectbucketV1alpha1Interface {
 	return &fakeobjectbucketv1alpha1.FakeObjectbucketV1alpha1{Fake: &c.Fake}
 }
-
-// Objectbucket retrieves the ObjectbucketV1alpha1Client
-func (c *Clientset) Objectbucket() objectbucketv1alpha1.ObjectbucketV1alpha1Interface {
-	return &fakeobjectbucketv1alpha1.FakeObjectbucketV1alpha1{Fake: &c.Fake}
-}
