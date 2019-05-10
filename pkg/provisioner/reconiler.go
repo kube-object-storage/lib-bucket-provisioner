@@ -208,7 +208,7 @@ package provisioner
 //
 // 	setObjectBucketName(ob, key)
 // 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
-// 	ob.Spec.ClaimRef, err = claimRefForKey(key, r.internalClient)
+// 	ob.Spec.ClaimRef, err = claimRefForKey(key)
 // 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 // 	ob.SetFinalizers([]string{finalizer})
 //

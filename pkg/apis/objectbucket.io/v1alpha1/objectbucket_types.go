@@ -3,7 +3,6 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 type mapper interface {
@@ -82,7 +81,7 @@ type Connection struct {
 type ObjectBucketSpec struct {
 	StorageClassName string                                `json:"storageClassName"`
 	ReclaimPolicy    *corev1.PersistentVolumeReclaimPolicy `json:"reclaimPolicy"`
-	ClaimRef         types.UID                             `json:"claimRef"`
+	ClaimRef         *corev1.ObjectReference	       `json:"claimRef"`
 	*Connection      `json:"Connection"`
 }
 

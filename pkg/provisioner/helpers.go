@@ -10,12 +10,19 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
 )
+
+func makeObjectReference(kind, name, namespace string) *corev1.ObjectReference {
+        return &corev1.ObjectReference{
+                Kind:       kind,
+                Name:       name,
+                Namespace:  namespace,
+        }
+}
 
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	logD.Info("validating claim for provisioning")
@@ -30,12 +37,12 @@ func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	return true
 }
 
-func claimRefForKey(key string, c versioned.Interface) (types.UID, error) {
-	claim, err := claimForKey(key, c)
+func claimRefForKey(key string) (*corev1.ObjectReference, error) {
+	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return claim.UID, nil
+	return makeObjectReference("ObjectBucketClaim", name, ns), nil
 }
 
 func claimForKey(key string, c versioned.Interface) (obc *v1alpha1.ObjectBucketClaim, err error) {
