@@ -22,7 +22,6 @@ func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectRefere
                 Name:       claim.Name,
                 Namespace:  claim.Namespace,
                 UID:	    claim.UID,
-		APIVersion: claim.APIVersion,
         }
 }
 
