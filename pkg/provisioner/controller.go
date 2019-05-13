@@ -287,7 +287,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 
 	setObjectBucketName(ob, key)
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
-	ob.Spec.ClaimRef, err = claimRefForKey(key)
+	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 	ob.SetFinalizers([]string{finalizer})
 
