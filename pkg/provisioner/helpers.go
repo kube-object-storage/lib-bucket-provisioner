@@ -16,11 +16,13 @@ import (
 	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
 )
 
-func makeObjectReference(kind, name, namespace string) *corev1.ObjectReference {
+func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectReference {
         return &corev1.ObjectReference{
-                Kind:       kind,
-                Name:       name,
-                Namespace:  namespace,
+                Kind:       claim.Kind,
+                Name:       claim.Name,
+                Namespace:  claim.Namespace,
+                UID:	    claim.UID,
+		APIVersion: claim.APIVersion,
         }
 }
 
@@ -37,12 +39,12 @@ func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	return true
 }
 
-func claimRefForKey(key string) (*corev1.ObjectReference, error) {
-	ns, name, err := cache.SplitMetaNamespaceKey(key)
+func claimRefForKey(key string, c versioned.Interface) (*corev1.ObjectReference, error) {
+	claim, err := claimForKey(key, c)
 	if err != nil {
 		return nil, err
 	}
-	return makeObjectReference("ObjectBucketClaim", name, ns), nil
+	return makeObjectReference(claim), nil
 }
 
 func claimForKey(key string, c versioned.Interface) (obc *v1alpha1.ObjectBucketClaim, err error) {
