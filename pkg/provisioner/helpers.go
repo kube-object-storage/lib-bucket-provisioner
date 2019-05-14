@@ -126,15 +126,18 @@ func obNameFromClaimKey(key string) (string, error) {
 func composeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
 	logD.Info("determining bucket name")
 	// XOR BucketName and GenerateBucketName
-	if (obc.Spec.BucketName == "") == (obc.Spec.GeneratBucketName == "") {
+	if obc.Spec.BucketName == "" && obc.Spec.GenerateBucketName == "" {
 		return "", fmt.Errorf("expected either bucketName or generateBucketName defined")
+	}
+	if obc.Spec.BucketName != "" && obc.Spec.GenerateBucketName != "" {
+		return "", fmt.Errorf("cannot define both bucketName and generateBucketName")
 	}
 	bucketName := obc.Spec.BucketName
 	if bucketName == "" {
-		logD.Info("bucket name is empty, generating")
-		bucketName = generateBucketName(obc.Spec.GeneratBucketName)
+		logD.Info("bucket name is empty, generating...")
+		bucketName = generateBucketName(obc.Spec.GenerateBucketName)
+		logD.Info("generated bucket name", "name", bucketName)
 	}
-	logD.Info("bucket name generated", "name", bucketName)
 	return bucketName, nil
 }
 

@@ -217,6 +217,10 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		err       error
 	)
 
+	if !shouldProvision(obc) {
+		return nil
+	}
+
 	// If the storage class contains the name of the bucket then we create access
 	// to an existing bucket. If the bucket name does not appear in the storage
 	// class then we dynamically provision a new bucket.
@@ -246,10 +250,6 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	}
 	if len(bucketName) == 0 {
 		return fmt.Errorf("bucket name missing")
-	}
-
-	if !shouldProvision(obc) {
-		return nil
 	}
 
 	options := &api.BucketOptions{
