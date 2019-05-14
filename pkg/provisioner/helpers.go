@@ -26,13 +26,9 @@ func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectRefere
 }
 
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
-	logD.Info("validating claim for provisioning")
+	logD.Info("validating claim for provisioning obc", obc.Name)
 	if obc.Spec.ObjectBucketName != "" {
 		log.Info("provisioning already completed", "ObjectBucket", obc.Spec.ObjectBucketName)
-		return false
-	}
-	if obc.Spec.StorageClassName == "" {
-		log.Info("OBC did not provide a storage class, cannot provision")
 		return false
 	}
 	return true
