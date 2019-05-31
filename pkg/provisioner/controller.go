@@ -248,10 +248,6 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("bucket name missing")
 	}
 
-	if !shouldProvision(obc) {
-		return nil
-	}
-
 	options := &api.BucketOptions{
 		ReclaimPolicy:     class.ReclaimPolicy,
 		BucketName:        bucketName,

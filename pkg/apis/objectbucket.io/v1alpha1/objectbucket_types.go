@@ -17,7 +17,7 @@ type mapper interface {
 const (
 	AwsKeyField        = "AWS_ACCESS_KEY_ID"
 	AwsSecretField     = "AWS_SECRET_ACCESS_KEY"
-	StorageClassBucket = "BUCKET_NAME"
+	StorageClassBucket = "bucketName"
 )
 
 // AccessKeys is an Authentication type for passing AWS S3 style key pairs from the provisioner to the reconciler

@@ -26,13 +26,9 @@ func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectRefere
 }
 
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
-	logD.Info("validating claim for provisioning")
+	logD.Info("validating claim for provisioning obc", obc.Name)
 	if obc.Spec.ObjectBucketName != "" {
 		log.Info("provisioning already completed", "ObjectBucket", obc.Spec.ObjectBucketName)
-		return false
-	}
-	if obc.Spec.StorageClassName == "" {
-		log.Info("OBC did not provide a storage class, cannot provision")
 		return false
 	}
 	return true
@@ -126,15 +122,18 @@ func obNameFromClaimKey(key string) (string, error) {
 func composeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
 	logD.Info("determining bucket name")
 	// XOR BucketName and GenerateBucketName
-	if (obc.Spec.BucketName == "") == (obc.Spec.GeneratBucketName == "") {
+	if obc.Spec.BucketName == "" && obc.Spec.GenerateBucketName == "" {
 		return "", fmt.Errorf("expected either bucketName or generateBucketName defined")
+	}
+	if obc.Spec.BucketName != "" && obc.Spec.GenerateBucketName != "" {
+		return "", fmt.Errorf("cannot define both bucketName and generateBucketName")
 	}
 	bucketName := obc.Spec.BucketName
 	if bucketName == "" {
-		logD.Info("bucket name is empty, generating")
-		bucketName = generateBucketName(obc.Spec.GeneratBucketName)
+		logD.Info("bucket name is empty, generating...")
+		bucketName = generateBucketName(obc.Spec.GenerateBucketName)
+		logD.Info("generated bucket name", "name", bucketName)
 	}
-	logD.Info("bucket name generated", "name", bucketName)
 	return bucketName, nil
 }
 
