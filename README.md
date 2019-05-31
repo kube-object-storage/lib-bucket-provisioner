@@ -11,7 +11,7 @@ There are [examples](https://github.com/yard-turkey/lib-bucket-provisioner/blob/
 
 Library contributors should look [here](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/hack/README.md) for `make` and directions.
 
-Provisioner Developers should look [here](https://github.com/yard-turkey/examples-and-blogs/blob/master/examples/sample-how-to-write-provisioner.md) for some guidance/recommendations/tips on how to get started with creating your own Provisioner. 
+Provisioner Developers should look [here](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/doc/examples/sample-how-to-write-provisioner.md) for some guidance/recommendations/tips on how to get started with creating your own Provisioner. 
 
 
 ### Feedback and Community Input
