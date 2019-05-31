@@ -17,6 +17,7 @@ and an effort is made to keep it up-to-date. Future considerations are tracked a
 1. [Bucket Sharing](#bucket-sharing)
 1. [Quota](#quota)
 1. [Watches](#watches)
+1. [Current Restrictions](#current-restrictions)
 1. [API Specifications](#api-specifications)
 1. [Interfaces](#interfaces)
 
@@ -165,6 +166,17 @@ The OBC watch performs the following:
   + invoke the `Delete` method when the reclaim policy is "delete" (greenfield)
   + invoke the `Revoke` method when the reclaim policy is "retain"
   + delete the related Secret, ConfigMap and the OB (in that order)
+
+### Current Restrictions
++ there is no event recording thus events are not shown in commands like `kubectl describe obc`.
++ there is no ability to _cancel_ bucket provisioning
++ there is no way to define a _reclaimPolicy_ that supports erasing or suspending a bucket
++ OBC update events are ignored, thus, OBC bucket properties (e.g. size, ACL, future additions) cannot be edited
++ there are no bucket metrics
++ there is no bucket lifecycle management (e.g. ability to define expiration, archive, migration, etc. policies)
++ security relies soley on RBAC, thus there is no way to distinguish bucket access within the same namespace
++ there is no HA due to no leader election in the lib -- if the provisioner is running in a goroutine (e.g. rook-ceph provisioner) and it fails the lib cannot be restarted
++ logging verbosity levels are somewhat arbitrary
 
 ## API Specifications
 
