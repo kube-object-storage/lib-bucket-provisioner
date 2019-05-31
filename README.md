@@ -16,5 +16,3 @@ Provisioner Developers should look [here](https://github.com/yard-turkey/example
 
 ### Feedback and Community Input
 Please submit PRs against any section of this repo, especially the library design.
-Also, feel free to reach out to the initial authors: Jon Cope (jcope@redhat.com), Scott Creeley (screeley@redhat.com) and Jeff Vance (jvance@redhat.com). 
-
