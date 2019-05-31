@@ -5,7 +5,7 @@ metadata:
   name: "example-bucket"
   namespace: default
 spec:
-  bucketName: "provisioner-example-bucket"
+  generateBucketName: "objectbucket-io-"
   storageClassName: object-bucket-class
   SSL: false
   versioned: false
