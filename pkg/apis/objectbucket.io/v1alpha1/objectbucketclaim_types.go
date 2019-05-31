@@ -30,7 +30,7 @@ type ObjectBucketClaimSpec struct {
 	// GenerateBucketName (recommended) a prefix for a bucket name to be
 	// followed by a hyphen and 5 random characters. Protects against
 	// in-store name collisions.
-	GeneratBucketName string `json:"generateBucketName,omitempty"`
+	GenerateBucketName string `json:"generateBucketName,omitempty"`
 	// SSL whether connection to the bucket requires SSL Authentication or not
 	SSL bool `json:"ssl"`
 	// Generic predefined bucket ACLs for use by provisioners
