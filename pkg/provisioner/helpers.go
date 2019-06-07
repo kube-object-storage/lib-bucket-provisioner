@@ -17,12 +17,28 @@ import (
 )
 
 func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectReference {
-        return &corev1.ObjectReference{
-                Kind:       claim.Kind,
-                Name:       claim.Name,
-                Namespace:  claim.Namespace,
-                UID:	    claim.UID,
-        }
+	return &corev1.ObjectReference{
+		Kind:      claim.Kind,
+		Name:      claim.Name,
+		Namespace: claim.Namespace,
+		UID:       claim.UID,
+	}
+}
+
+func makeOwnerReference(claim *v1alpha1.ObjectBucketClaim) metav1.OwnerReference {
+
+	groupVersion, kind := claim.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
+	blockOwnerDeletion := true
+	isController := true
+
+	return metav1.OwnerReference{
+		APIVersion:         groupVersion,
+		Kind:               kind,
+		Name:               claim.GetName(),
+		UID:                claim.GetUID(),
+		BlockOwnerDeletion: &blockOwnerDeletion,
+		Controller:         &isController,
+	}
 }
 
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
@@ -76,6 +92,19 @@ func isNewBucketByOB(c kubernetes.Interface, ob *v1alpha1.ObjectBucket) bool {
 	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
 }
 
+func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
+	logD.Info("getting objectBucket for key", "key", key)
+	name, err := obNameFromClaimKey(key)
+	if err != nil {
+		return nil, err
+	}
+	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting object bucket %q:", name, err)
+	}
+	return ob, nil
+}
+
 func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap, error) {
 	logD.Info("getting configMap for key", "key", key)
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
@@ -84,7 +113,7 @@ func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap
 	}
 	cm, err := c.CoreV1().ConfigMaps(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting configmap %q:", ns+"/"+name, err)
 	}
 	return cm, nil
 }
@@ -97,7 +126,7 @@ func secretForClaimKey(key string, c kubernetes.Interface) (sec *corev1.Secret, 
 	}
 	sec, err = c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error getting secret %q:", ns+"/"+name, err)
 	}
 	return
 }
