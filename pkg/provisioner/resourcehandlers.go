@@ -71,7 +71,7 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 	}, nil
 }
 
-// NewCredentialsSecret returns a secret with data appropriate to the supported authenticaion
+// newCredentialsSecret returns a secret with data appropriate to the supported authenticaion
 // method. Even if the values for the Authentication keys are empty, we generate the secret.
 // A finalizer is added to reduce chances of the secret being accidentally deleted.
 // An OwnerReference is added so that the secret is automatically garbage collected when the
@@ -167,12 +167,12 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c k
 
 // Only the finalizer needs to be removed. The CM will be garbage collected since its
 // ownerReference refers to the parent OBC.
-func deleteConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
+func releaseConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
 	if cm == nil {
 		return nil
 	}
 
-	logD.Info("ConfigMap is automatically deleted after its finalizer is removed", "name", cm.Namespace+"/"+cm.Name)
+	logD.Info("ConfigMap is garbage collected after its finalizer is removed", "name", cm.Namespace+"/"+cm.Name)
 	removeFinalizer(cm)
 	cm, err := c.CoreV1().ConfigMaps(cm.Namespace).Update(cm)
 	if err != nil {
@@ -184,13 +184,13 @@ func deleteConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
 
 // Only the finalizer needs to be removed. The Secret will be garbage collected since its
 // ownerReference refers to the parent OBC.
-func deleteSecret(sec *corev1.Secret, c kubernetes.Interface) error {
+func releaseSecret(sec *corev1.Secret, c kubernetes.Interface) error {
 	if sec == nil {
 		log.Info("got nil secret, skipping")
 		return nil
 	}
 
-	logD.Info("secret is automatically deleted after its finalizer is removed", "name", sec.Namespace+"/"+sec.Name)
+	logD.Info("secret is garbage collected after its finalizer is removed", "name", sec.Namespace+"/"+sec.Name)
 	removeFinalizer(sec)
 	sec, err := c.CoreV1().Secrets(sec.Namespace).Update(sec)
 	if err != nil {

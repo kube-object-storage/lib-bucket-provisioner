@@ -412,13 +412,13 @@ func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.Confi
 		}
 	}
 	if s != nil {
-		if delErr := deleteSecret(s, c.clientset); delErr != nil {
+		if delErr := releaseSecret(s, c.clientset); delErr != nil {
 			log.Error(delErr, "error deleting secret", s.Namespace+"/"+s.Name)
 			err = delErr
 		}
 	}
 	if cm != nil {
-		if delErr := deleteConfigMap(cm, c.clientset); delErr != nil {
+		if delErr := releaseConfigMap(cm, c.clientset); delErr != nil {
 			log.Error(delErr, "error deleting configMap", cm.Namespace+"/"+cm.Name)
 			err = delErr
 		}
