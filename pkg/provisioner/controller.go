@@ -322,49 +322,35 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	return nil
 }
 
+// Delete or Revoke access to bucket defined by passed-in key.
 func (c *Controller) handleDeleteClaim(key string) error {
+	// Call `Delete` for new (greenfield) buckets with reclaimPolicy == "Delete".
+	// Call `Revoke` for new buckets with reclaimPolicy != "Delete".
+	// Call `Revoke` for existing (brownfield) buckets regardless of reclaimPolicy.
 
 	// TODO each delete should retry a few times to mitigate intermittent errors
+	// (Jon, is this TODO still needed??)
 
-	cm, err := configMapForClaimKey(key, c.clientset)
-	if err == nil {
-		err = deleteConfigMap(cm, c.clientset)
-		if err != nil {
-			return err
-		}
-	} else {
-		log.Error(err, "could not get configMap")
-	}
-
-	secret, err := secretForClaimKey(key, c.clientset)
-	if err == nil {
-		err = deleteSecret(secret, c.clientset)
-		if err != nil {
-			return err
-		}
-	} else {
-		log.Error(err, "could not get secret")
-	}
-
-	ob, err := c.objectBucketForClaimKey(key)
+	ob, cm, secret, err := c.getResourcesFromKey(key)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Error(err, "objectBucket not found, assuming it was already deleted")
-			return nil
-		}
-		return fmt.Errorf("error getting objectBucket for key: %v", err)
-	} else if ob == nil {
-		log.Error(nil, "got nil objectBucket, assuming deletion complete")
-		return nil
+		return err
+	}
+	// Note: ob or cm or secret (or 2 of the 3) can be nil.
+	//   This allows us to delete remaining non-nil resources.
+
+	if ob == nil {
+		log.Error(nil, "nil ObjectBucket, assuming it has been deleted")
+		// can't call Delete or Revoke but try to delete secret and cm if they exist
+		return c.deleteResources(ob, cm, secret)
 	}
 
-	// Call the provisioner's `Revoke` method for old (brownfield) buckets regardless of reclaimPolicy.
-	// Also call `Revoke` for new buckets with a reclaimPolicy other than "Delete".
 	if ob.Spec.ReclaimPolicy == nil {
-		log.Error(nil, "got null reclaimPolicy", "ob", ob.Name)
+		log.Error(nil, "null reclaimPolicy", "ob", ob.Name)
 		return nil
 	}
 
+	// ok to call Delete or Revoke and attempt to delete generated k8s resources.
+	// Note: if Delete or Revoke return an error we do not attempt to delete resources.
 	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, defaultRetryBaseInterval, defaultRetryTimeout)
 	if err != nil {
 		return err
@@ -389,7 +375,9 @@ func (c *Controller) handleDeleteClaim(key string) error {
 			return fmt.Errorf("error deleting objectBucket %v", ob.Name)
 		}
 	}
-	return nil
+
+	// delete all generated kubernetes resources
+	return c.deleteResources(ob, cm, secret)
 }
 
 func (c *Controller) supportedProvisioner(provisioner string) bool {
@@ -409,14 +397,64 @@ func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket
 	return ob, nil
 }
 
-func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) {
-	if err := deleteObjectBucket(ob, c.libClientset); err != nil {
-		log.Error(err, "error deleting objectBucket")
+// Returns the ob, configmap, and secret based on the passed-in key. Only returns non-nil
+// error if unable to get all resources. Some resources may be nil.
+func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, error) {
+
+	ob, obErr := c.objectBucketForClaimKey(key)
+	if errors.IsNotFound(obErr) {
+		log.Error(obErr, "ObjectBucket not found")
+		obErr = nil
+	} else if obErr != nil {
+		ob = nil
 	}
-	if err := deleteSecret(s, c.clientset); err != nil {
-		log.Error(err, "error deleting secret")
+
+	cm, cmErr := configMapForClaimKey(key, c.clientset)
+	if errors.IsNotFound(cmErr) {
+		log.Error(cmErr, "ConfigMap not found")
+		cmErr = nil
+	} else if cmErr != nil {
+		cm = nil
 	}
-	if err := deleteConfigMap(cm, c.clientset); err != nil {
-		log.Error(err, "error deleting configMap")
+
+	s, sErr := secretForClaimKey(key, c.clientset)
+	if errors.IsNotFound(sErr) {
+		log.Error(sErr, "Secret not found")
+		sErr = nil
+	} else if sErr != nil {
+		s = nil
 	}
+
+	var err error
+	// return err if all resources were not retrieved, else no error
+	if obErr != nil && cmErr != nil && sErr != nil {
+		err = fmt.Errorf("Could not get all needed resources: %v : %v : %v", obErr, cmErr, sErr)
+	}
+
+	return ob, cm, s, err
+}
+
+// Returns err if can't delete one or more of the resources. The final error, if non-nil, is
+// somewhat arbitrary.
+func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) (err error) {
+	if ob != nil {
+		if delErr := deleteObjectBucket(ob, c.libClientset); delErr != nil {
+			log.Error(delErr, "error deleting objectBucket", ob.Namespace+"/"+ob.Name)
+			err = delErr
+		}
+	}
+	if s != nil {
+		if delErr := deleteSecret(s, c.clientset); delErr != nil {
+			log.Error(delErr, "error deleting secret", s.Namespace+"/"+s.Name)
+			err = delErr
+		}
+	}
+	if cm != nil {
+		if delErr := deleteConfigMap(cm, c.clientset); delErr != nil {
+			log.Error(delErr, "error deleting configMap", cm.Namespace+"/"+cm.Name)
+			err = delErr
+		}
+	}
+
+	return err
 }
