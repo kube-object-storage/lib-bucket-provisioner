@@ -38,9 +38,11 @@ const (
 	objectBucketNameFormat = "obc-%s-%s"
 )
 
-// newBucketConfigMap constructs a config map from a given endpoint and ObjectBucketClaim As a quality of life addition,
-// it constructs a full URL for the bucket path. Success is constrained by a defined Bucket name and Bucket host.
+// newBucketConfigMap returns a config map from a given endpoint and ObjectBucketClaim. 
+// A finalizer is added to reduce chances of the CM being accidentally deleted. An OwnerReference
+// is added so that the CM is automatically garbage collected when the parent OBC is deleted.
 func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*corev1.ConfigMap, error) {
+
 	logD.Info("defining new configMap", "for claim", obc.Namespace+"/"+obc.Name)
 	if ep == nil {
 		return nil, fmt.Errorf("cannot construct configMap, got nil Endpoint")
@@ -69,8 +71,11 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 	}, nil
 }
 
-// NewCredentialsSecret returns a secret with data appropriate to the supported authenticaion method. Even if the values
-// for the Authentication keys are empty, we generate the secret.
+// NewCredentialsSecret returns a secret with data appropriate to the supported authenticaion
+// method. Even if the values for the Authentication keys are empty, we generate the secret.
+// A finalizer is added to reduce chances of the secret being accidentally deleted.
+// An OwnerReference is added so that the secret is automatically garbage collected when the
+// parent OBC is deleted.
 func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*corev1.Secret, error) {
 
 	if obc == nil {
@@ -95,6 +100,8 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 	return secret, nil
 }
 
+// createObjectBucket creates an OB based on the passed-in ob spec.
+// Note: a finalizer has been added to reduce chances of the ob being accidentally deleted.
 func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucket, error) {
 	logD.Info("creating ObjectBucket", "name", ob.Name)
 
@@ -158,11 +165,10 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c k
 	return configMap, err
 }
 
-// Only the finalizer needs to be removed. The CM will be deleted since it's
+// Only the finalizer needs to be removed. The CM will be garbage collected since its
 // ownerReference refers to the parent OBC.
 func deleteConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
 	if cm == nil {
-		log.Info("got nil configMap pointer, skipping delete")
 		return nil
 	}
 
@@ -176,7 +182,7 @@ func deleteConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
 	return nil
 }
 
-// Only the finalizer needs to be removed. The Secret will be deleted since it's
+// Only the finalizer needs to be removed. The Secret will be garbage collected since its
 // ownerReference refers to the parent OBC.
 func deleteSecret(sec *corev1.Secret, c kubernetes.Interface) error {
 	if sec == nil {
@@ -194,19 +200,27 @@ func deleteSecret(sec *corev1.Secret, c kubernetes.Interface) error {
 	return nil
 }
 
-// Only the finalizer needs to be removed. The OB will be deleted since it's ownerReference
-// refers to the parent OBC.
+// The OB does not have an ownerReference and must be explicitly deleted after its
+// finalizer is removed.
 func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error {
 	if ob == nil {
-		log.Error(fmt.Errorf("got nil objectBucket, skipping"), "")
 		return nil
 	}
 
-	logD.Info("OB is automatically deleted after its finalizer is removed", "name", ob.Namespace+"/"+ob.Name)
+	logD.Info("deleting OB after its finalizer is removed", "name", ob.Name)
 	removeFinalizer(ob)
 	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(ob)
 	if err != nil {
 		return err
+	}
+
+	err = c.ObjectbucketV1alpha1().ObjectBuckets().Delete(ob.Name, &metav1.DeleteOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			log.Error(err, "ObjectBucket vanished before we could delete it, skipping", "ob", ob.Name)
+			return nil
+		}
+		return fmt.Errorf("error deleting ObjectBucket %q: %v", ob.Name, err)
 	}
 
 	return nil
