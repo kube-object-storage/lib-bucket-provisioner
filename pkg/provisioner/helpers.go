@@ -25,6 +25,19 @@ func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectRefere
         }
 }
 
+func makeOwnerReference(claim *v1alpha1.ObjectBucketClaim) metav1.OwnerReference {
+	blockOwnerDeletion := true
+	isController := true
+
+	return metav1.OwnerReference{
+		Kind: "ObjectBucketClaim",
+		Name: claim.GetName(),
+		UID: claim.GetUID(),
+		BlockOwnerDeletion: &blockOwnerDeletion,
+		Controller: &isController,
+	}
+}
+
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	logD.Info("validating claim for provisioning obc", obc.Name)
 	if obc.Spec.ObjectBucketName != "" {

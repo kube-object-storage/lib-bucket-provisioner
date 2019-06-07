@@ -54,6 +54,9 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			Name:       obc.Name,
 			Namespace:  obc.Namespace,
 			Finalizers: []string{finalizer},
+			OwnerReferences: []metav1.OwnerReference{
+				makeOwnerReference(obc),
+			},
 		},
 		Data: map[string]string{
 			bucketName:      ep.BucketName,
@@ -82,6 +85,9 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 			Name:       obc.Name,
 			Namespace:  obc.Namespace,
 			Finalizers: []string{finalizer},
+			OwnerReferences: []metav1.OwnerReference{
+				makeOwnerReference(obc),
+			},
 		},
 	}
 
@@ -152,73 +158,57 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c k
 	return configMap, err
 }
 
+// Only the finalizer needs to be removed. The CM will be deleted since it's
+// ownerReference refers to the parent OBC.
 func deleteConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
 	if cm == nil {
 		log.Info("got nil configMap pointer, skipping delete")
 		return nil
 	}
+
+	logD.Info("ConfigMap is automatically deleted after its finalizer is removed", "name", cm.Namespace+"/"+cm.Name)
 	removeFinalizer(cm)
 	cm, err := c.CoreV1().ConfigMaps(cm.Namespace).Update(cm)
 	if err != nil {
 		return err
 	}
 
-	logD.Info("deleting configMap", "name", cm.Namespace+"/"+cm.Name)
-	err = c.CoreV1().ConfigMaps(cm.Namespace).Delete(cm.Name, &metav1.DeleteOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Error(err, "configMap vanished before we could delete it, skipping")
-			return nil
-		}
-		return fmt.Errorf("error deleting configMap %s/%s: %v", cm.Namespace, cm.Name, err)
-	}
 	return nil
 }
 
+// Only the finalizer needs to be removed. The Secret will be deleted since it's
+// ownerReference refers to the parent OBC.
 func deleteSecret(sec *corev1.Secret, c kubernetes.Interface) error {
 	if sec == nil {
 		log.Info("got nil secret, skipping")
 		return nil
 	}
 
+	logD.Info("secret is automatically deleted after its finalizer is removed", "name", sec.Namespace+"/"+sec.Name)
 	removeFinalizer(sec)
 	sec, err := c.CoreV1().Secrets(sec.Namespace).Update(sec)
 	if err != nil {
 		return err
 	}
 
-	logD.Info("deleting secret", "name", sec.Namespace+"/"+sec.Name)
-	err = c.CoreV1().Secrets(sec.Namespace).Delete(sec.Name, &metav1.DeleteOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Error(err, "secret vanished before we could delete it, skipping")
-			return nil
-		}
-		return fmt.Errorf("error deleting Secret %s/%s: %v", sec.Namespace, sec.Name, err)
-	}
 	return nil
 }
 
+// Only the finalizer needs to be removed. The OB will be deleted since it's ownerReference
+// refers to the parent OBC.
 func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error {
 	if ob == nil {
 		log.Error(fmt.Errorf("got nil objectBucket, skipping"), "")
 		return nil
 	}
-	logD.Info("deleting ObjectBucket", "name", ob.Name)
+
+	logD.Info("OB is automatically deleted after its finalizer is removed", "name", ob.Namespace+"/"+ob.Name)
 	removeFinalizer(ob)
 	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(ob)
 	if err != nil {
 		return err
 	}
 
-	err = c.ObjectbucketV1alpha1().ObjectBuckets().Delete(ob.Name, &metav1.DeleteOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			log.Error(err, "ObjectBucket vanished before we could delete it, skipping")
-			return nil
-		}
-		return fmt.Errorf("error deleting ObjectBucket %s/%s: %v", ob.Namespace, ob.Name, err)
-	}
 	return nil
 }
 
