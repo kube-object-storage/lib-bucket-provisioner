@@ -17,11 +17,14 @@ import (
 )
 
 func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectReference {
+
+	groupVersion, kind := claim.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
 	return &corev1.ObjectReference{
-		Kind:      claim.Kind,
-		Name:      claim.Name,
-		Namespace: claim.Namespace,
-		UID:       claim.UID,
+		APIVersion: groupVersion,
+		Kind:       kind,
+		Name:       claim.Name,
+		Namespace:  claim.Namespace,
+		UID:        claim.UID,
 	}
 }
 
@@ -34,8 +37,8 @@ func makeOwnerReference(claim *v1alpha1.ObjectBucketClaim) metav1.OwnerReference
 	return metav1.OwnerReference{
 		APIVersion:         groupVersion,
 		Kind:               kind,
-		Name:               claim.GetName(),
-		UID:                claim.GetUID(),
+		Name:               claim.Name,
+		UID:                claim.UID,
 		BlockOwnerDeletion: &blockOwnerDeletion,
 		Controller:         &isController,
 	}
