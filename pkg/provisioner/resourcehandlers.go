@@ -84,7 +84,6 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 	if auth == nil {
 		return nil, fmt.Errorf("got nil authentication, nothing to do")
 	}
-logD.Info("DEBUG *********", "obc meta", obc.ObjectMeta)
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
@@ -98,6 +97,7 @@ logD.Info("DEBUG *********", "obc meta", obc.ObjectMeta)
 	}
 
 	secret.StringData = auth.ToMap()
+logD.Info("DEBUG *********", "obc meta", obc.ObjectMeta)
 logD.Info("DEBUG *********", "secret meta", secret.ObjectMeta)
 	return secret, nil
 }

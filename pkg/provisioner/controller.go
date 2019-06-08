@@ -302,8 +302,8 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return err
 	}
 
-	// NOTE: do not move ob create/update calls before secret or vice versa.  spec.Authentication is lost after create/update, which
-	// break secret creation
+	// Note: do not move ob create/update calls before secret or vice versa.
+	//   spec.Authentication is lost after create/update, which break secret creation
 	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
@@ -317,6 +317,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	if _, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
+
 	log.Info("provisioning succeeded")
 	return nil
 }
