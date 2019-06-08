@@ -493,7 +493,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 // 					StorageClassName: className,
 // 					ReclaimPolicy:    &deletePolicy,
 // 					ClaimRef: &corev1.ObjectReference{
-// 						Kind:            "ObjectBucketClaim",
+// 						Kind:            v1alpha1.OBCKind,
 // 						Namespace:       testns,
 // 						Name:            testname,
 // 						UID:             "",

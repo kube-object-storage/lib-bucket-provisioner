@@ -345,8 +345,8 @@ func (c *Controller) handleDeleteClaim(key string) error {
 		return nil
 	}
 
-	// ok to call Delete or Revoke and then delete generated k8s resources
-	// Note: if Delete or Revoke return an error we do not try to delete resources
+	// call Delete or Revoke and then delete generated k8s resources
+	// Note: if Delete or Revoke return err then we do not try to delete resources
 	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, defaultRetryBaseInterval, defaultRetryTimeout)
 	if err != nil {
 		return err
