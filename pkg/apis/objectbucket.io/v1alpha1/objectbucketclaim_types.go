@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // BucketCannedACL strictly types pre-defined S3 bucket ACLs.  Provisioners are recommended to constrain these ACLs
@@ -84,6 +85,12 @@ type ObjectBucketClaim struct {
 
 	Spec   ObjectBucketClaimSpec   `json:"spec,omitempty"`
 	Status ObjectBucketClaimStatus `json:"status,omitempty"`
+}
+
+const ObjectBucketClaimKind = "ObjectBucketClaim"
+
+func ObjectBucketClaimGVK() schema.GroupVersionKind {
+	return GroupKindVersion(ObjectBucketClaimKind)
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

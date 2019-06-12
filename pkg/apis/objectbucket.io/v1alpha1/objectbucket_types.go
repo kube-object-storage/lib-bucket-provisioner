@@ -3,6 +3,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 type mapper interface {
@@ -81,7 +82,7 @@ type Connection struct {
 type ObjectBucketSpec struct {
 	StorageClassName string                                `json:"storageClassName"`
 	ReclaimPolicy    *corev1.PersistentVolumeReclaimPolicy `json:"reclaimPolicy"`
-	ClaimRef         *corev1.ObjectReference	       `json:"claimRef"`
+	ClaimRef         *corev1.ObjectReference               `json:"claimRef"`
 	*Connection      `json:"Connection"`
 }
 
@@ -107,6 +108,12 @@ const (
 type ObjectBucketStatus struct {
 	Phase      ObjectBucketStatusPhase `json:"phase"`
 	Conditions corev1.ConditionStatus  `json:"conditions"`
+}
+
+const ObjectBucketKind = "ObjectBucket"
+
+func ObjectBucketGVK() schema.GroupVersionKind {
+	return GroupKindVersion(ObjectBucketKind)
 }
 
 // +genclient

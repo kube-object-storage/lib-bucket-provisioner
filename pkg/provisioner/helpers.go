@@ -18,8 +18,8 @@ import (
 func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectReference {
 
 	return &corev1.ObjectReference{
-		APIVersion: v1alpha1.OBCgroupVersion,
-		Kind:       v1alpha1.OBCgvk.Kind,
+		APIVersion: v1alpha1.SchemeGroupVersion.String(),
+		Kind:       v1alpha1.ObjectBucketClaimGVK().Kind,
 		Name:       claim.Name,
 		Namespace:  claim.Namespace,
 		UID:        claim.UID,
@@ -32,8 +32,8 @@ func makeOwnerReference(claim *v1alpha1.ObjectBucketClaim) metav1.OwnerReference
 	isController := true
 
 	return metav1.OwnerReference{
-		APIVersion:	    v1alpha1.OBCgroupVersion,
-		Kind:		    v1alpha1.OBCgvk.Kind,
+		APIVersion:         v1alpha1.SchemeGroupVersion.String(),
+		Kind:               v1alpha1.ObjectBucketClaimGVK().Kind,
 		Name:               claim.Name,
 		UID:                claim.UID,
 		BlockOwnerDeletion: &blockOwnerDeletion,
@@ -65,13 +65,7 @@ func claimForKey(key string, c versioned.Interface) (obc *v1alpha1.ObjectBucketC
 	if err != nil {
 		return nil, err
 	}
-
-	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(ns).Get(name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	// WHY DeepCopy?? return obc.DeepCopy(), nil
-	return obc, nil
+	return c.ObjectbucketV1alpha1().ObjectBucketClaims(ns).Get(name, metav1.GetOptions{})
 }
 
 // Return true if this storage class is for a new bucket vs an existing bucket.

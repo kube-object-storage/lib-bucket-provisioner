@@ -14,9 +14,11 @@ import (
 // SchemeGroupVersion is group version used to register these objects
 var SchemeGroupVersion = schema.GroupVersion{Group: objectbucketio.GroupName, Version: "v1alpha1"}
 
-var OBCgroupVersion = SchemeGroupVersion.Group + "/" + SchemeGroupVersion.Version
+const Version = "v1alpha1"
 
-var OBCgvk = schema.GroupVersionKind{Group: SchemeGroupVersion.Group, Version: SchemeGroupVersion.Version, Kind: "ObjectBucketClaim"}
+func GroupKindVersion(kind string) schema.GroupVersionKind {
+	return SchemeGroupVersion.WithKind(kind)
+}
 
 // Kind takes an unqualified kind and returns back a Group qualified GroupKind
 func Kind(kind string) schema.GroupKind {
