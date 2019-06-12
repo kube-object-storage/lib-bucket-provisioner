@@ -6,6 +6,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+const ObjectBucketKind = "ObjectBucket"
+
+func ObjectBucketGVK() schema.GroupVersionKind {
+	return GroupKindVersion(ObjectBucketKind)
+}
+
 type mapper interface {
 	toMap() map[string]string
 }
@@ -108,12 +114,6 @@ const (
 type ObjectBucketStatus struct {
 	Phase      ObjectBucketStatusPhase `json:"phase"`
 	Conditions corev1.ConditionStatus  `json:"conditions"`
-}
-
-const ObjectBucketKind = "ObjectBucket"
-
-func ObjectBucketGVK() schema.GroupVersionKind {
-	return GroupKindVersion(ObjectBucketKind)
 }
 
 // +genclient
