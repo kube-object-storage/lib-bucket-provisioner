@@ -100,7 +100,7 @@ func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket
 	}
 	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting object bucket %q:", name, err)
+		return nil, fmt.Errorf("error getting object bucket %q: %v", name, err)
 	}
 	return ob, nil
 }
@@ -113,7 +113,7 @@ func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap
 	}
 	cm, err := c.CoreV1().ConfigMaps(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting configmap %q:", ns+"/"+name, err)
+		return nil, fmt.Errorf("error getting configmap %q: %v", ns+"/"+name, err)
 	}
 	return cm, nil
 }
@@ -126,7 +126,7 @@ func secretForClaimKey(key string, c kubernetes.Interface) (sec *corev1.Secret, 
 	}
 	sec, err = c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting secret %q:", ns+"/"+name, err)
+		return nil, fmt.Errorf("error getting secret %q: %v", ns+"/"+name, err)
 	}
 	return
 }
