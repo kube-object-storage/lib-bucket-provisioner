@@ -14,6 +14,12 @@ import (
 // SchemeGroupVersion is group version used to register these objects
 var SchemeGroupVersion = schema.GroupVersion{Group: objectbucketio.GroupName, Version: "v1alpha1"}
 
+const Version = "v1alpha1"
+
+func GroupKindVersion(kind string) schema.GroupVersionKind {
+	return SchemeGroupVersion.WithKind(kind)
+}
+
 // Kind takes an unqualified kind and returns back a Group qualified GroupKind
 func Kind(kind string) schema.GroupKind {
 	return SchemeGroupVersion.WithKind(kind).GroupKind()

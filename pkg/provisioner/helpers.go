@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
@@ -17,25 +16,26 @@ import (
 )
 
 func makeObjectReference(claim *v1alpha1.ObjectBucketClaim) *corev1.ObjectReference {
+
 	return &corev1.ObjectReference{
-		Kind:      claim.Kind,
-		Name:      claim.Name,
-		Namespace: claim.Namespace,
-		UID:       claim.UID,
+		APIVersion: v1alpha1.SchemeGroupVersion.String(),
+		Kind:       v1alpha1.ObjectBucketClaimGVK().Kind,
+		Name:       claim.Name,
+		Namespace:  claim.Namespace,
+		UID:        claim.UID,
 	}
 }
 
 func makeOwnerReference(claim *v1alpha1.ObjectBucketClaim) metav1.OwnerReference {
 
-	groupVersion, kind := claim.GetObjectKind().GroupVersionKind().ToAPIVersionAndKind()
 	blockOwnerDeletion := true
 	isController := true
 
 	return metav1.OwnerReference{
-		APIVersion:         groupVersion,
-		Kind:               kind,
-		Name:               claim.GetName(),
-		UID:                claim.GetUID(),
+		APIVersion:         v1alpha1.SchemeGroupVersion.String(),
+		Kind:               v1alpha1.ObjectBucketClaimGVK().Kind,
+		Name:               claim.Name,
+		UID:                claim.UID,
 		BlockOwnerDeletion: &blockOwnerDeletion,
 		Controller:         &isController,
 	}
@@ -65,15 +65,7 @@ func claimForKey(key string, c versioned.Interface) (obc *v1alpha1.ObjectBucketC
 	if err != nil {
 		return nil, err
 	}
-
-	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(ns).Get(name, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("error getting claim: %v", err)
-	}
-	return obc.DeepCopy(), nil
+	return c.ObjectbucketV1alpha1().ObjectBucketClaims(ns).Get(name, metav1.GetOptions{})
 }
 
 // Return true if this storage class is for a new bucket vs an existing bucket.

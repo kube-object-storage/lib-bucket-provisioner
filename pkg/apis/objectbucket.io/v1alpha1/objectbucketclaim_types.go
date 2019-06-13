@@ -2,7 +2,14 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+const ObjectBucketClaimKind = "ObjectBucketClaim"
+
+func ObjectBucketClaimGVK() schema.GroupVersionKind {
+	return GroupKindVersion(ObjectBucketClaimKind)
+}
 
 // BucketCannedACL strictly types pre-defined S3 bucket ACLs.  Provisioners are recommended to constrain these ACLs
 // scoped to the unique bucket that was created for the request. They are a subset of canned ACLs from AWS S3's

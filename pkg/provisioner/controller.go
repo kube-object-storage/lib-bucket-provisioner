@@ -302,8 +302,8 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return err
 	}
 
-	// NOTE: do not move ob create/update calls before secret or vice versa.  spec.Authentication is lost after create/update, which
-	// break secret creation
+	// Note: do not move ob create/update calls before secret or vice versa.
+	//   spec.Authentication is lost after create/update, which break secret creation
 	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
@@ -317,6 +317,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	if _, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
+
 	log.Info("provisioning succeeded")
 	return nil
 }
@@ -344,8 +345,8 @@ func (c *Controller) handleDeleteClaim(key string) error {
 		return nil
 	}
 
-	// ok to call Delete or Revoke and then delete generated k8s resources
-	// Note: if Delete or Revoke return an error we do not try to delete resources
+	// call Delete or Revoke and then delete generated k8s resources
+	// Note: if Delete or Revoke return err then we do not try to delete resources
 	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, defaultRetryBaseInterval, defaultRetryTimeout)
 	if err != nil {
 		return err
