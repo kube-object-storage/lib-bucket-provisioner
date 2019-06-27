@@ -230,7 +230,7 @@ func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryIn
 
 	logD.Info("updating", "obc", obc.Namespace+"/"+obc.Name)
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
+		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
 		return (err == nil), err
 	})
 	return

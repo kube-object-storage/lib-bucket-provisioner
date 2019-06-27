@@ -193,11 +193,6 @@ func (c *Controller) syncHandler(key string) error {
 		return nil
 	}
 
-	obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
-		return err
-	}
-
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
 	err = c.handleProvisionClaim(key, obc, class)
 
@@ -207,14 +202,18 @@ func (c *Controller) syncHandler(key string) error {
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
+func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) (err error) {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
 		secret    *corev1.Secret
 		configMap *corev1.ConfigMap
-		err       error
 	)
+
+	// first step is to update the OBC's status to pending
+	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+		return err
+	}
 
 	// If the storage class contains the name of the bucket then we create access
 	// to an existing bucket. If the bucket name does not appear in the storage
@@ -280,20 +279,6 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("provisioner returned nil/empty object bucket")
 	}
 
-	setObjectBucketName(ob, key)
-	ob.Spec.StorageClassName = obc.Spec.StorageClassName
-	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
-	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
-	ob.SetFinalizers([]string{finalizer})
-
-	obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
-		return err
-	}
-
-	obc.Spec.ObjectBucketName = ob.Name
-	obc.Spec.BucketName = bucketName
-
 	if secret, err = createSecret(obc, ob.Spec.Authentication, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
@@ -304,17 +289,27 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 
 	// Note: do not move ob create/update calls before secret or vice versa.
 	//   spec.Authentication is lost after create/update, which break secret creation
+	setObjectBucketName(ob, key)
+	ob.Spec.StorageClassName = obc.Spec.StorageClassName
+	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
+	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+	ob.SetFinalizers([]string{finalizer})
+
 	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
-
-	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
+	if ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
 
 	// Only update the claim if the secret and configMap succeed
+	obc.Spec.ObjectBucketName = ob.Name
+	obc.Spec.BucketName = bucketName
+
 	if _, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+		return err
+	}
+	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return err
 	}
 
