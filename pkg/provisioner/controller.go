@@ -209,10 +209,11 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		secret    *corev1.Secret
 		configMap *corev1.ConfigMap
 	)
+	obcNsName := obc.Namespace + "/" + obc.Name
 
 	// first step is to update the OBC's status to pending
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
+		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
 	}
 
 	// If the storage class contains the name of the bucket then we create access
@@ -263,7 +264,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	obc, err = claimForKey(key, c.libClientset)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return fmt.Errorf("OBC was lost before we could provision: %v", err)
+			return fmt.Errorf("OBC %q was lost before we could provision: %v", obcNsName, err)
 		}
 		return err
 	}
@@ -279,14 +280,15 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("provisioner returned nil/empty object bucket")
 	}
 
+	// create Secret and ConfigMap
 	if secret, err = createSecret(obc, ob.Spec.Authentication, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
+		return fmt.Errorf("error creating secret for OBC %q: %v", obcNsName, err)
 	}
-
 	if configMap, err = createConfigMap(obc, ob.Spec.Endpoint, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
+		return fmt.Errorf("error creating configmap for OBC %q: %v", obcNsName, err)
 	}
 
+	// Create OB
 	// Note: do not move ob create/update calls before secret or vice versa.
 	//   spec.Authentication is lost after create/update, which break secret creation
 	setObjectBucketName(ob, key)
@@ -296,21 +298,21 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	ob.SetFinalizers([]string{finalizer})
 
 	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
+		return fmt.Errorf("error creating OB %q: %v", ob.Name, err)
 	}
 	if ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
+		return fmt.Errorf("error updating OB %q's status to %q:", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
 	}
 
-	// Only update the claim if the secret and configMap succeed
+	// update OBC
 	obc.Spec.ObjectBucketName = ob.Name
 	obc.Spec.BucketName = bucketName
 
-	if _, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
+	if obc, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err) 
 	}
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return err
+		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
 	}
 
 	log.Info("provisioning succeeded")

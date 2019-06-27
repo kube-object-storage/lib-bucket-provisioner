@@ -102,23 +102,20 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 
 // createObjectBucket creates an OB based on the passed-in ob spec.
 // Note: a finalizer has been added to reduce chances of the ob being accidentally deleted.
-func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucket, error) {
+func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
 	logD.Info("creating ObjectBucket", "name", ob.Name)
 
-	err := wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		ob, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(ob)
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				// The object already exists don't spam the logs, instead let the request be requeued
-				return true, err
-			}
-			// The error could be intermittent, log and try again
+	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
+		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(ob)
+		if errors.IsAlreadyExists(err) {
+			err = nil
+		} else if err != nil {
+			// could be intermittent api error
 			log.Error(err, "probably not fatal, retrying")
-			return false, nil
 		}
-		return true, nil
+		return (err == nil), err
 	})
-	return ob, err
+	return
 }
 
 func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
