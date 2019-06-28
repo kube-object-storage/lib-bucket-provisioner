@@ -7,14 +7,13 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
@@ -38,12 +37,10 @@ const (
 	objectBucketNameFormat = "obc-%s-%s"
 )
 
-// newBucketConfigMap returns a config map from a given endpoint and ObjectBucketClaim. 
+// newBucketConfigMap returns a config map from a given endpoint and ObjectBucketClaim.
 // A finalizer is added to reduce chances of the CM being accidentally deleted. An OwnerReference
 // is added so that the CM is automatically garbage collected when the parent OBC is deleted.
 func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*corev1.ConfigMap, error) {
-
-	logD.Info("defining new configMap", "for claim", obc.Namespace+"/"+obc.Name)
 	if ep == nil {
 		return nil, fmt.Errorf("cannot construct configMap, got nil Endpoint")
 	}
@@ -123,7 +120,7 @@ func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication
 	if err != nil {
 		return nil, err
 	}
-
+	logD.Info("creating Secret", "name", secret.Namespace+"/"+secret.Name)
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
 		secret, err = c.CoreV1().Secrets(obc.Namespace).Create(secret)
 		if err != nil {
@@ -146,6 +143,7 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c k
 		return nil, err
 	}
 
+	logD.Info("creating ConfigMap", "name", configMap.Namespace+"/"+configMap.Name)
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
 		configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(configMap)
 		if err != nil {
@@ -164,14 +162,18 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c k
 
 // Only the finalizer needs to be removed. The CM will be garbage collected since its
 // ownerReference refers to the parent OBC.
-func releaseConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
+func releaseConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) (err error) {
 	if cm == nil {
 		return nil
 	}
 
-	logD.Info("ConfigMap is garbage collected after its finalizer is removed", "name", cm.Namespace+"/"+cm.Name)
+	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Get(cm.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	logD.Info("removing ConfigMaps's finalizer", "name", cm.Namespace+"/"+cm.Name)
 	removeFinalizer(cm)
-	cm, err := c.CoreV1().ConfigMaps(cm.Namespace).Update(cm)
+	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Update(cm)
 	if err != nil {
 		return err
 	}
@@ -181,15 +183,18 @@ func releaseConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) error {
 
 // Only the finalizer needs to be removed. The Secret will be garbage collected since its
 // ownerReference refers to the parent OBC.
-func releaseSecret(sec *corev1.Secret, c kubernetes.Interface) error {
+func releaseSecret(sec *corev1.Secret, c kubernetes.Interface) (err error) {
 	if sec == nil {
 		log.Info("got nil secret, skipping")
 		return nil
 	}
-
-	logD.Info("secret is garbage collected after its finalizer is removed", "name", sec.Namespace+"/"+sec.Name)
+	sec, err = c.CoreV1().Secrets(sec.Namespace).Get(sec.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	logD.Info("removing Secret's finalizer", "name", sec.Namespace+"/"+sec.Name)
 	removeFinalizer(sec)
-	sec, err := c.CoreV1().Secrets(sec.Namespace).Update(sec)
+	sec, err = c.CoreV1().Secrets(sec.Namespace).Update(sec)
 	if err != nil {
 		return err
 	}
@@ -199,27 +204,30 @@ func releaseSecret(sec *corev1.Secret, c kubernetes.Interface) error {
 
 // The OB does not have an ownerReference and must be explicitly deleted after its
 // finalizer is removed.
+// Uses Update() because Patch Strategies are not supported for CRDs
+// https://github.com/kubernetes/kubernetes/issues/50037
 func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error {
 	if ob == nil {
 		return nil
 	}
 
-	logD.Info("deleting OB after its finalizer is removed", "name", ob.Name)
+	logD.Info("removing ObjectBucket's finalizer", "name", ob.Name)
 	removeFinalizer(ob)
 	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(ob)
 	if err != nil {
 		return err
 	}
 
+	logD.Info("deleting ObjectBucket", "name", ob.Name)
 	err = c.ObjectbucketV1alpha1().ObjectBuckets().Delete(ob.Name, &metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			log.Error(err, "ObjectBucket vanished before we could delete it, skipping", "ob", ob.Name)
+			log.Error(err, "ObjectBucket vanished before we could delete it, skipping", "name", ob.Name)
 			return nil
 		}
 		return fmt.Errorf("error deleting ObjectBucket %q: %v", ob.Name, err)
 	}
-
+	logD.Info("ObjectBucket deleted", "name", ob.Name)
 	return nil
 }
 
