@@ -335,7 +335,7 @@ func (c *Controller) handleDeleteClaim(key string) error {
 	// if the ob is nil. However if the secret and/or cm != nil we can delete them.
 	if ob == nil {
 		log.Error(nil, "nil ObjectBucket, assuming it has been deleted")
-		return c.deleteResources(ob, cm, secret)
+		return c.deleteResources(nil, cm, secret)
 	}
 	if ob.Spec.ReclaimPolicy == nil {
 		log.Error(nil, "missing reclaimPolicy", "ob", ob.Name)
@@ -411,13 +411,13 @@ func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.Confi
 	}
 	if s != nil {
 		if delErr := releaseSecret(s, c.clientset); delErr != nil {
-			log.Error(delErr, "error deleting secret", s.Namespace+"/"+s.Name)
+			log.Error(delErr, "error releasing secret", s.Namespace+"/"+s.Name)
 			err = delErr
 		}
 	}
 	if cm != nil {
 		if delErr := releaseConfigMap(cm, c.clientset); delErr != nil {
-			log.Error(delErr, "error deleting configMap", cm.Namespace+"/"+cm.Name)
+			log.Error(delErr, "error releasing configMap", cm.Namespace+"/"+cm.Name)
 			err = delErr
 		}
 	}

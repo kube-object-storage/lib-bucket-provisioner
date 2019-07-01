@@ -206,13 +206,11 @@ func storageClassForOB(ob *v1alpha1.ObjectBucket, c kubernetes.Interface) (*stor
 }
 
 func removeFinalizer(obj metav1.Object) {
-	logD.Info("removing finalizer from object", "name", obj.GetName())
 	finalizers := obj.GetFinalizers()
 	for i, f := range finalizers {
 		if f == finalizer {
-			logD.Info("found finalizer, deleting and updating API")
+			logD.Info("removing finalizer", "object", obj.GetName(), "finalizer", finalizer)
 			obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
-			logD.Info("finalizer deletion successful")
 			break
 		}
 	}
