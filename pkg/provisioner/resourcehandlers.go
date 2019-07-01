@@ -102,23 +102,20 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 
 // createObjectBucket creates an OB based on the passed-in ob spec.
 // Note: a finalizer has been added to reduce chances of the ob being accidentally deleted.
-func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucket, error) {
+func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
 	logD.Info("creating ObjectBucket", "name", ob.Name)
 
-	err := wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		ob, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(ob)
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				// The object already exists don't spam the logs, instead let the request be requeued
-				return true, err
-			}
-			// The error could be intermittent, log and try again
+	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
+		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(ob)
+		if errors.IsAlreadyExists(err) {
+			err = nil
+		} else if err != nil {
+			// could be intermittent api error
 			log.Error(err, "probably not fatal, retrying")
-			return false, nil
 		}
-		return true, nil
+		return (err == nil), err
 	})
-	return ob, err
+	return
 }
 
 func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
@@ -226,40 +223,36 @@ func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error 
 	return nil
 }
 
-func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucketClaim, error) {
-	err := wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
-		if err != nil {
-			return false, err
-		}
-		return true, nil
+func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucketClaim, err error) {
+
+	logD.Info("updating", "obc", obc.Namespace+"/"+obc.Name)
+	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
+		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
+		return (err == nil), err
 	})
-	if err != nil {
-		return nil, fmt.Errorf("error updating phase: %v", err)
-	}
-	return obc, nil
+	return
 }
 
-func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucketClaim, error) {
+func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucketClaim, err error) {
+	logD.Info("updating status:", "obc", obc.Namespace+"/"+obc.Name, "old status",
+		 obc.Status.Phase, "new status", phase)
 	obc.Status.Phase = phase
-	obc, err := updateClaim(c, obc, retryInterval, retryTimeout)
-	if err != nil {
-		return nil, err
-	}
-	return obc, nil
+
+	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
+		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).UpdateStatus(obc)
+		return (err == nil), err
+	})
+	return
 }
 
-func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, phase v1alpha1.ObjectBucketStatusPhase, retryInterval, retryTimeout time.Duration) (*v1alpha1.ObjectBucket, error) {
+func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, phase v1alpha1.ObjectBucketStatusPhase, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
+	logD.Info("updating status:", "ob", ob.Name, "old status", ob.Status.Phase,
+		"new status", phase)
 	ob.Status.Phase = phase
-	err := wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		ob, err = c.ObjectbucketV1alpha1().ObjectBuckets().Update(ob)
-		if err != nil {
-			return false, err
-		}
-		return true, nil
+
+	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
+		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(ob)
+		return (err == nil), err
 	})
-	if err != nil {
-		return nil, fmt.Errorf("error updating phase: %v", err)
-	}
-	return ob, nil
+	return
 }
