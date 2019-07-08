@@ -19,8 +19,8 @@ limitations under the License.
 package objectbucket
 
 import (
-	internalinterfaces "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io/v1alpha1"
+	internalinterfaces "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io/v1alpha1"
 )
 
 // Interface provides access to each of this group's versions.

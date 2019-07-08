@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 REPO_ROOT="$(readlink -f $(dirname ${BASH_SOURCE})/../)"
-readonly LOCAL_IMPORT="sigs.k8s.io/controller-runtime,github.com/yard-turkey/lib-bucket-provisioner/"
+readonly LOCAL_IMPORT="sigs.k8s.io/controller-runtime,github.com/kube-object-storage/lib-bucket-provisioner/"
 
 readonly PKGS="./pkg/..."
 

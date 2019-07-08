@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	objectbucketio "github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io"
+	objectbucketio "github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io"
 )
 
 // SchemeGroupVersion is group version used to register these objects

@@ -21,10 +21,10 @@ package v1alpha1
 import (
 	time "time"
 
-	objectbucketiov1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	versioned "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
-	internalinterfaces "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
-	v1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/listers/objectbucket.io/v1alpha1"
+	objectbucketiov1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	versioned "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/listers/objectbucket.io/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"

@@ -5,7 +5,7 @@ set -o nounset
 set -o pipefail
 
 REPO_ROOT="$(realpath -LP $(dirname ${BASH_SOURCE})/../)"
-IMPORT_PATH="github.com/yard-turkey/lib-bucket-provisioner"
+IMPORT_PATH="github.com/kube-object-storage/lib-bucket-provisioner"
 
 APIS_DIR=${IMPORT_PATH}/pkg/apis
 CLIENT_DIR=${IMPORT_PATH}/pkg/client

@@ -8,9 +8,9 @@ import (
 	"k8s.io/klog"
 	"k8s.io/klog/klogr"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
-	informers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
+	informers "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
 // Controller is the first iteration of our internal provisioning

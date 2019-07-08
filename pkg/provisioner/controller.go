@@ -13,12 +13,12 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
-	informers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io/v1alpha1"
-	listers "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/listers/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
-	pErr "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api/errors"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
+	informers "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io/v1alpha1"
+	listers "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/listers/objectbucket.io/v1alpha1"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
+	pErr "github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api/errors"
 )
 
 type controller interface {

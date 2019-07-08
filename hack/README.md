@@ -2,7 +2,7 @@
 
 Clone this repo with 
 
-`go get -d github.com/yard-turkey/lib-bucket-provisioner`
+`go get -d github.com/github.com/kube-object-storage/lib-bucket-provisioner`
 
 Then install the dependencies
 

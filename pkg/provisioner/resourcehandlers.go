@@ -7,15 +7,15 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
 const (
@@ -235,7 +235,7 @@ func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryIn
 
 func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucketClaim, err error) {
 	logD.Info("updating status:", "obc", obc.Namespace+"/"+obc.Name, "old status",
-		 obc.Status.Phase, "new status", phase)
+		obc.Status.Phase, "new status", phase)
 	obc.Status.Phase = phase
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {

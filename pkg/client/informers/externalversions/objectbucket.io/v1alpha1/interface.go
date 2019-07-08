@@ -19,7 +19,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	internalinterfaces "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
+	internalinterfaces "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.

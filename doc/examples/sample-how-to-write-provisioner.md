@@ -29,13 +29,13 @@ This example will walk through the steps on how to create your own provisioner. 
 example we will be revisiting some of the key concepts and steps we did to
 produce the AWS-S3-Provisioner. 
 
-For additional information on the design of the library take a look [here](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/doc/design/object-bucket-lib.md)
+For additional information on the design of the library take a look [here](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/doc/design/object-bucket-lib.md)
 
-To contribute or view the library code take a look [here](https://github.com/yard-turkey/lib-bucket-provisioner)
+To contribute or view the library code take a look [here](https://github.com/kube-object-storage/lib-bucket-provisioner)
 
 ### Key Concepts
 
-- Library uses the [ObjectBucket and ObjectBucketClaim](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml) CustomResourceDefinition that is very closely modeled after the existing Kubernetes PV and PVC patterns.
+- Library uses the [ObjectBucket and ObjectBucketClaim](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml) CustomResourceDefinition that is very closely modeled after the existing Kubernetes PV and PVC patterns.
 
 - The Library and Provisoners also use other common Kubernetes Dynamic Provisioning resources, such as StorageClasses, Secrets and ConfigMaps.
 
@@ -52,7 +52,7 @@ section that allows each provisioner flexibility in what is required for it to s
 - Admin might also need to create proper service accounts for the Provisioner to run.
 
 *User:*
-- User creates an [OBC request](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/deploy/example-claim.yaml) (Similar to a PVC) that points to the StorageClass of the provisioner.
+- User creates an [OBC request](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/example-claim.yaml) (Similar to a PVC) that points to the StorageClass of the provisioner.
 
 *Library/Provisioner:*
 - Watches for all OBC's in all Namespaces, If the provisioner exists, it will queue and work on the request.
@@ -87,16 +87,15 @@ The following sections will lend some guidance on how a provisioner can be devel
 
 ### Project Layout
 A project can be structured in several different ways, this is just one example of a 
-project model that was used with the [AWS S3 Provisioner](https://github.com/yard-turkey/aws-s3-provisioner).
+project model that was used with the [AWS S3 Provisioner](https://github.com/kube-object-storage/aws-s3-provisioner).
 
 #### Create a GitHub Repo
 1. Login to Github and create a personal repository for your project. Our team uses a generic repo where we
-typically put dev projects called [yard-turkey](https://github.com/yard-turkey). And before you ask...yard-turkey has
-no special meaning other than the guy who created it had a bunch of wild turkeys in his back yard during that time.
+typically put dev projects called [kube-object-storage](https://github.com/kube-object-storage).
 
 ```
    Good repo should be easy to remmember and find:
-   https://github.com/<team repo>/<specific app/project name> i.e. /yard-turkey/aws-s3-provisioner
+   https://github.com/<team repo>/<specific app/project name> i.e. /kube-object-storage/aws-s3-provisioner
    
    You can also use your personal repo for dev if you don't have a formal or team repo to use
    https://github.com/<github user>/<specific app/project name> i.e. /screeley44/aws-s3-provisioner
@@ -156,9 +155,9 @@ Now the basic project structure is in place, you can begin building the provisio
 *provisioner*.go file in the *Repo Root*/cmd/ directory.
 ### Import Library and Other Common Packages
 ```
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	libbkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner"
-	apibkt "github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	libbkt "github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner"
+	apibkt "github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 
 	storageV1 "k8s.io/api/storage/v1"
 	"k8s.io/client-go/kubernetes"
@@ -246,7 +245,7 @@ func (p *gcsProvisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 ### Sample Code
 Take a look at some existing provisioners to get an idea of how these interfaces are implemented and you can
 most likely use these a template to get started, updating where it is appropriate.
-[AWS-S3-Provisioner](https://github.com/yard-turkey/aws-s3-provisioner)
+[AWS-S3-Provisioner](https://github.com/kube-object-storage/aws-s3-provisioner)
 [Rook-Ceph Provisioner](TBD)
 ### Dependency Management
 The Bucket Library uses `client-go v1.11` and `Kubernete v1.14`. If your project uses different versions
@@ -296,7 +295,7 @@ See links above for some guidance on how one might go about doing that.
  # go build -a -o ./bin/aws-s3-provisioner  ./cmd/...
 ```
 
-2. Install the [OB/OBC CRDs](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml) on your cluster.
+2. Install the [OB/OBC CRDs](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml) on your cluster.
 
 
 3. Push the binary to a remote cluster to test or run it on your local cluster if you have one.
@@ -362,4 +361,4 @@ i.e.
 
 ## Usage Examples
 
-End-to-End [Examples](https://github.com/yard-turkey/examples-and-blogs/tree/master/examples)
+End-to-End [Examples](https://github.com/kube-object-storage/examples-and-blogs/tree/master/examples)

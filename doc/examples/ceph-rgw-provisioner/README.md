@@ -45,7 +45,7 @@ rook-discover-5v92n                                        1/1     Running     0
 # kubectl create clusterrolebinding cluster-admin-rook --clusterrole=cluster-admin --user=system:serviceaccount:rook-ceph:rook-ceph-system
 ```
 
-3. Create your [operator.yaml](https://github.com/yard-turkey/examples-and-blogs/blob/master/examples/rook-ceph-provisioner/operator.yaml) and execute it - note this is a development branch image that you can build and put in docker or quay - the image listed here might be old!
+3. Create your [operator.yaml](https://github.com/kube-object-storage/examples-and-blogs/blob/master/examples/rook-ceph-provisioner/operator.yaml) and execute it - note this is a development branch image that you can build and put in docker or quay - the image listed here might be old!
 
 ```yaml
 

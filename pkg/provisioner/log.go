@@ -4,7 +4,7 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/klog/klogr"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
 var (
