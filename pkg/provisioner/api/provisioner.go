@@ -3,7 +3,7 @@ package api
 import (
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
 // All provisioners must implement the Provisioner interface which defines the

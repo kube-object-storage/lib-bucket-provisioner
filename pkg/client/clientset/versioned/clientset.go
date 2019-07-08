@@ -19,7 +19,7 @@ limitations under the License.
 package versioned
 
 import (
-	objectbucketv1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned/typed/objectbucket.io/v1alpha1"
+	objectbucketv1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned/typed/objectbucket.io/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"

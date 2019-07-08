@@ -4,8 +4,8 @@ import (
 	"fmt"
 	// "sigs.k8s.io/Controller-runtime/pkg/client/fake"
 
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
-	"github.com/yard-turkey/lib-bucket-provisioner/pkg/provisioner/api"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
+	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
 type fakeProvisioner struct{}

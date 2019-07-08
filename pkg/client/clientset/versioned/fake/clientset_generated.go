@@ -19,9 +19,9 @@ limitations under the License.
 package fake
 
 import (
-	clientset "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
-	objectbucketv1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned/typed/objectbucket.io/v1alpha1"
-	fakeobjectbucketv1alpha1 "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned/typed/objectbucket.io/v1alpha1/fake"
+	clientset "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
+	objectbucketv1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned/typed/objectbucket.io/v1alpha1"
+	fakeobjectbucketv1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned/typed/objectbucket.io/v1alpha1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"

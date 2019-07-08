@@ -24,7 +24,7 @@ two basic use cases; Administrator and Developer/Application Owner.
 ### Deploy or Run AWS S3 Provisioner on Cluster
 
 #### Normal Pod Deployment Method 1:
-1. Create the ObjectBucket and ObjectBucketClaim [CustomResourceDefinitions](https://github.com/yard-turkey/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml).
+1. Create the ObjectBucket and ObjectBucketClaim [CustomResourceDefinitions](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml).
 
 2. Create a ClusterRoleBinding for the default serviceaccount that will run your provisioner.
 
@@ -36,7 +36,7 @@ two basic use cases; Administrator and Developer/Application Owner.
 # kubectl create clusterrolebinding cluster-admin-aws --clusterrole=cluster-admin --user=system:serviceaccount:s3-prov:default
 ```
 
-3. Deploy the latest [AWS S3 Provisioner](https://github.com/yard-turkey/aws-s3-provisioner/blob/master/examples/awss3provisioner-deployment.yaml) and create a ClusterRoleBinding.
+3. Deploy the latest [AWS S3 Provisioner](https://github.com/kube-object-storage/aws-s3-provisioner/blob/master/examples/awss3provisioner-deployment.yaml) and create a ClusterRoleBinding.
 
 ```yaml
 apiVersion: apps/v1

@@ -23,9 +23,9 @@ import (
 	sync "sync"
 	time "time"
 
-	versioned "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/clientset/versioned"
-	internalinterfaces "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
-	objectbucketio "github.com/yard-turkey/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io"
+	versioned "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
+	internalinterfaces "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/internalinterfaces"
+	objectbucketio "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"

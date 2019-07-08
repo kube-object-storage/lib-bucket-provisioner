@@ -79,7 +79,7 @@ linters-settings:
   goimports:
     # put imports beginning with prefix after 3rd-party packages;
     # it's a comma-separated list of prefixes
-    local-prefixes: sigs.k8s.io/controller-runtime,github.com/yard-turkey/lib-bucket-provisioner
+    local-prefixes: sigs.k8s.io/controller-runtime,github.com/kube-object-storage/lib-bucket-provisioner
   goconst:
     # minimal length of string constant, 3 by default
     min-len: 3
