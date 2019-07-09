@@ -150,7 +150,6 @@ func composeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
 	if bucketName == "" {
 		bucketName = generateBucketName(obc.Spec.GenerateBucketName)
 	}
-	logD.Info("generated bucket name", "name", bucketName)
 	return bucketName, nil
 }
 
@@ -205,7 +204,6 @@ func removeFinalizer(obj metav1.Object) {
 	for i, f := range finalizers {
 		if f == finalizer {
 			obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
-			logD.Info("finalizer removed")
 			break
 		}
 	}
