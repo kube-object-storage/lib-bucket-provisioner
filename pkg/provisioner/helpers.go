@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"k8s.io/client-go/tools/cache"
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
@@ -69,16 +69,16 @@ func claimForKey(key string, c versioned.Interface) (obc *v1alpha1.ObjectBucketC
 }
 
 // Return true if this storage class is for a new bucket vs an existing bucket.
-func isNewBucketByClass(sc *storagev1.StorageClass) bool {
+func isNewBucketByStorageClass(sc *storagev1.StorageClass) bool {
 	return len(sc.Parameters[v1alpha1.StorageClassBucket]) == 0
 }
 
 // Return true if this OB is for a new bucket vs an existing bucket.
-func isNewBucketByOB(c kubernetes.Interface, ob *v1alpha1.ObjectBucket) bool {
+func isNewBucketByObjectBucket(c kubernetes.Interface, ob *v1alpha1.ObjectBucket) bool {
 	// temp: get bucket name from OB's storage class
-	class, err := storageClassForOB(ob, c)
+	class, err := storageClassForObjectBucket(ob, c)
 	if err != nil || class == nil {
-		log.Info("ERROR: unable to get storageclass", "ob", ob)
+		log.Error(err, "unable to get StorageClass of ObjectBucket")
 		return false
 	}
 	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
@@ -86,7 +86,7 @@ func isNewBucketByOB(c kubernetes.Interface, ob *v1alpha1.ObjectBucket) bool {
 
 func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
 	logD.Info("getting objectBucket for key", "key", key)
-	name, err := obNameFromClaimKey(key)
+	name, err := objectBucketNameFromClaimKey(key)
 	if err != nil {
 		return nil, err
 	}
@@ -124,15 +124,14 @@ func secretForClaimKey(key string, c kubernetes.Interface) (sec *corev1.Secret, 
 }
 
 func setObjectBucketName(ob *v1alpha1.ObjectBucket, key string) {
-	obName, err := obNameFromClaimKey(key)
+	obName, err := objectBucketNameFromClaimKey(key)
 	if err != nil {
 		return
 	}
-	logD.Info("setting OB name", "name", ob.Name)
 	ob.Name = obName
 }
 
-func obNameFromClaimKey(key string) (string, error) {
+func objectBucketNameFromClaimKey(key string) (string, error) {
 	ns, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return "", err
@@ -141,8 +140,6 @@ func obNameFromClaimKey(key string) (string, error) {
 }
 
 func composeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
-	logD.Info("determining bucket name")
-	// XOR BucketName and GenerateBucketName
 	if obc.Spec.BucketName == "" && obc.Spec.GenerateBucketName == "" {
 		return "", fmt.Errorf("expected either bucketName or generateBucketName defined")
 	}
@@ -151,9 +148,7 @@ func composeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
 	}
 	bucketName := obc.Spec.BucketName
 	if bucketName == "" {
-		logD.Info("bucket name is empty, generating...")
 		bucketName = generateBucketName(obc.Spec.GenerateBucketName)
-		logD.Info("generated bucket name", "name", bucketName)
 	}
 	return bucketName, nil
 }
@@ -167,40 +162,39 @@ const (
 func generateBucketName(prefix string) string {
 	if len(prefix) > maxBaseNameLen {
 		prefix = prefix[:maxBaseNameLen-1]
-		logD.Info("truncating prefix", "new prefix", prefix)
 	}
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
 }
 
 func storageClassForClaim(c kubernetes.Interface, obc *v1alpha1.ObjectBucketClaim) (*storagev1.StorageClass, error) {
-	logD.Info("getting storageClass for claim")
 	if obc == nil {
-		return nil, fmt.Errorf("got nil ObjectBucketClaim ptr")
+		return nil, fmt.Errorf("got nil ObjectBucketClaim pointer")
 	}
 	if obc.Spec.StorageClassName == "" {
 		return nil, fmt.Errorf("no StorageClass defined for ObjectBucketClaim \"%s/%s\"", obc.Namespace, obc.Name)
 	}
-	logD.Info("getting storage class", "name", obc.Spec.StorageClassName)
+	logD.Info("getting ObjectBucketClaim's StorageClass")
 	class, err := c.StorageV1().StorageClasses().Get(obc.Spec.StorageClassName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting storage class %q: %v", obc.Spec.StorageClassName, err)
+		return nil, fmt.Errorf("error getting StorageClass %q: %v", obc.Spec.StorageClassName, err)
 	}
-	log.Info("successfully got class", "name")
+	log.Info("got StorageClass", "name", class.Name)
 	return class, nil
 }
 
-func storageClassForOB(ob *v1alpha1.ObjectBucket, c kubernetes.Interface) (*storagev1.StorageClass, error) {
-	logD.Info("getting storageClass for objectbucket")
+func storageClassForObjectBucket(ob *v1alpha1.ObjectBucket, c kubernetes.Interface) (*storagev1.StorageClass, error) {
 	if ob == nil {
-		return nil, fmt.Errorf("got nil ObjectBucket ptr")
+		return nil, fmt.Errorf("got nil ObjectBucket pointer")
 	}
-
-	logD.Info("getting storage class", "name", ob.Spec.StorageClassName)
+	if ob.Spec.StorageClassName == "" {
+		return nil, fmt.Errorf("no StorageClass defined for ObjectBucket %q", ob.Name)
+	}
+	logD.Info("getting ObjectBucket's storage class", "name", ob.Spec.StorageClassName)
 	class, err := c.StorageV1().StorageClasses().Get(ob.Spec.StorageClassName, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting storageclass %q: %v", ob.Spec.StorageClassName, err)
+		return nil, fmt.Errorf("error getting StorageClass %q: %v", ob.Spec.StorageClassName, err)
 	}
-	log.Info("successfully got class", "name")
+	log.Info("got StorageClass", "name")
 
 	return class, nil
 }
@@ -209,7 +203,6 @@ func removeFinalizer(obj metav1.Object) {
 	finalizers := obj.GetFinalizers()
 	for i, f := range finalizers {
 		if f == finalizer {
-			logD.Info("removing finalizer", "object", obj.GetName(), "finalizer", finalizer)
 			obj.SetFinalizers(append(finalizers[:i], finalizers[i+1:]...))
 			break
 		}

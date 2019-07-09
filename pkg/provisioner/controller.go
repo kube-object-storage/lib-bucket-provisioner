@@ -219,7 +219,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	// If the storage class contains the name of the bucket then we create access
 	// to an existing bucket. If the bucket name does not appear in the storage
 	// class then we dynamically provision a new bucket.
-	isDynamicProvisioning := isNewBucketByClass(class)
+	isDynamicProvisioning := isNewBucketByStorageClass(class)
 
 	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
 	// It is assumed that if the get claim fails, no resources were generated to begin with.
@@ -227,12 +227,12 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		if err != nil {
 			log.Error(err, "cleaning up reconcile artifacts")
 			if !pErr.IsBucketExists(err) && ob != nil && isDynamicProvisioning {
-				log.Info("deleting bucket", "name", ob.Spec.Endpoint.BucketName)
+				log.Info("deleting storage artifacts")
 				if err = c.provisioner.Delete(ob); err != nil {
-					log.Error(err, "error deleting bucket")
+					log.Error(err, "error deleting storage artifacts")
 				}
 			}
-			c.deleteResources(ob, configMap, secret)
+			_ = c.deleteResources(ob, configMap, secret)
 		}
 	}()
 
@@ -247,6 +247,15 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("bucket name missing")
 	}
 
+	// Re-Get the claim in order to shorten the race condition where the claim was deleted after Reconcile() started
+	obc, err = claimForKey(key, c.libClientset)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return fmt.Errorf("OBC was lost before we could provision: %v", err)
+		}
+		return err
+	}
+
 	options := &api.BucketOptions{
 		ReclaimPolicy:     class.ReclaimPolicy,
 		BucketName:        bucketName,
@@ -259,15 +268,6 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		verb = "granting access to"
 	}
 	logD.Info(verb, "bucket", options.BucketName)
-
-	// Re-Get the claim in order to shorten the race condition where the claim was deleted after Reconcile() started
-	obc, err = claimForKey(key, c.libClientset)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return fmt.Errorf("OBC %q was lost before we could provision: %v", obcNsName, err)
-		}
-		return err
-	}
 
 	if isDynamicProvisioning {
 		ob, err = c.provisioner.Provision(options)
@@ -309,7 +309,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	obc.Spec.BucketName = bucketName
 
 	if obc, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err) 
+		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err)
 	}
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
@@ -350,7 +350,7 @@ func (c *Controller) handleDeleteClaim(key string) error {
 	}
 
 	// decide whether Delete or Revoke is called
-	if isNewBucketByOB(c.clientset, ob) && *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimDelete {
+	if isNewBucketByObjectBucket(c.clientset, ob) && *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimDelete {
 		if err = c.provisioner.Delete(ob); err != nil {
 			// Do not proceed to deleting the ObjectBucket if the deprovisioning fails for bookkeeping purposes
 			return fmt.Errorf("provisioner error deleting bucket %v", err)
@@ -374,24 +374,24 @@ func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *c
 
 	ob, obErr := c.objectBucketForClaimKey(key)
 	if errors.IsNotFound(obErr) {
-		log.Error(obErr, "ObjectBucket not found")
+		log.Error(obErr, "objectBucket not found")
 		obErr = nil
 	}
 	cm, cmErr := configMapForClaimKey(key, c.clientset)
 	if errors.IsNotFound(cmErr) {
-		log.Error(cmErr, "ConfigMap not found")
+		log.Error(cmErr, "configMap not found")
 		cmErr = nil
 	}
 	s, sErr := secretForClaimKey(key, c.clientset)
 	if errors.IsNotFound(sErr) {
-		log.Error(sErr, "Secret not found")
+		log.Error(sErr, "secret not found")
 		sErr = nil
 	}
 
 	var err error
 	// return err if all resources were not retrieved, else no error
 	if obErr != nil && cmErr != nil && sErr != nil {
-		err = fmt.Errorf("Could not get all needed resources: %v : %v : %v", obErr, cmErr, sErr)
+		err = fmt.Errorf("could not get all needed resources: %v : %v : %v", obErr, cmErr, sErr)
 	}
 
 	return ob, cm, s, err

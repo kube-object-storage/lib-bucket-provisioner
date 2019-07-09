@@ -79,7 +79,7 @@ func NewProvisioner(
 // Run starts the claim and bucket controllers.
 func (p *Provisioner) Run(stopCh <-chan struct{}) (err error) {
 	defer klog.Flush()
-	log.Info("starting provisioner Controller")
+	log.Info("starting provisioner", "name", p.Name)
 
 	p.informerFactory.Start(stopCh)
 
