@@ -181,12 +181,11 @@ func (c *Controller) syncHandler(key string) error {
 	***************************/
 	if err != nil {
 		// the OBC was deleted or some other error
-		log.Info("error getting claim")
 		if errors.IsNotFound(err) {
 			log.Info("looks like the OBC was deleted, proceeding with cleanup")
 			err = c.handleDeleteClaim(key)
 			if err != nil {
-				log.Error(err, "error cleaning up ObjectBucket: %v")
+				log.Error(err, "error cleaning up OBC", "name", key)
 			}
 			return err
 		}
