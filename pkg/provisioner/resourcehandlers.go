@@ -50,12 +50,15 @@ const (
 	finalizer = api.Domain + "/finalizer"
 
 	objectBucketNameFormat = "obc-%s-%s"
+
+	// child resource label
+	labelKey = "provisioner"
 )
 
 // newBucketConfigMap returns a config map from a given endpoint and ObjectBucketClaim.
 // A finalizer is added to reduce chances of the CM being accidentally deleted. An OwnerReference
 // is added so that the CM is automatically garbage collected when the parent OBC is deleted.
-func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) (*corev1.ConfigMap, error) {
+func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim, provisionerName string) (*corev1.ConfigMap, error) {
 	if ep == nil {
 		return nil, fmt.Errorf("cannot construct configMap, got nil Endpoint")
 	}
@@ -70,6 +73,9 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 			Finalizers: []string{finalizer},
 			OwnerReferences: []metav1.OwnerReference{
 				makeOwnerReference(obc),
+			},
+			Labels: map[string]string{
+				labelKey: provisionerName,
 			},
 		},
 		Data: map[string]string{
@@ -87,7 +93,7 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim) 
 // A finalizer is added to reduce chances of the secret being accidentally deleted.
 // An OwnerReference is added so that the secret is automatically garbage collected when the
 // parent OBC is deleted.
-func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication) (*corev1.Secret, error) {
+func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, provisionerName string) (*corev1.Secret, error) {
 
 	if obc == nil {
 		return nil, fmt.Errorf("ObjectBucketClaim required to generate secret")
@@ -103,6 +109,9 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 			Finalizers: []string{finalizer},
 			OwnerReferences: []metav1.OwnerReference{
 				makeOwnerReference(obc),
+			},
+			Labels: map[string]string{
+				labelKey: provisionerName,
 			},
 		},
 	}
@@ -129,8 +138,8 @@ func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryI
 	return
 }
 
-func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
-	secret, err := newCredentialsSecret(obc, auth)
+func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, provisionerName string, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
+	secret, err := newCredentialsSecret(obc, auth, provisionerName)
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +160,8 @@ func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication
 	return secret, err
 }
 
-func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.ConfigMap, error) {
-	configMap, err := newBucketConfigMap(ep, obc)
+func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, provisionerName string, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.ConfigMap, error) {
+	configMap, err := newBucketConfigMap(ep, obc, provisionerName)
 	if err != nil {
 		return nil, err
 	}
