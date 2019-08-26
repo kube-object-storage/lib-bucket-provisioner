@@ -165,36 +165,36 @@ func (c *Controller) processNextItemInQueue() bool {
 	return true
 }
 
-// Reconcile implements the Reconciler interface.  This function contains the business logic of the
-// OBC Controller.  Currently, the process strictly serves as a POC for an OBC Controller and is
-// extremely fragile.
+// Reconcile implements the Reconciler interface. This function contains the business logic
+// of the OBC Controller.
 func (c *Controller) syncHandler(key string) error {
 
 	setLoggersWithRequest(key)
-
 	logD.Info("new Reconcile iteration")
 
 	obc, err := claimForKey(key, c.libClientset)
-
-	/**************************
-	 Delete or Revoke Bucket
-	***************************/
 	if err != nil {
-		// the OBC was deleted or some other error
-		if errors.IsNotFound(err) {
-			log.Info("looks like the OBC was deleted, proceeding with cleanup")
-			err = c.handleDeleteClaim(key)
-			if err != nil {
-				log.Error(err, "error cleaning up OBC", "name", key)
-			}
-			return err
-		}
 		return fmt.Errorf("error getting claim for request key %q", key)
 	}
+	if obc == nil {
+		return fmt.Errorf("unexpected nil OBC for request key %q", key)
+	}
 
-	/*******************************************************
-	 Provision New Bucket or Grant Access to Existing Bucket
-	********************************************************/
+	if obc.ObjectMeta.DeletionTimestamp != nil {
+		// ***********************
+	 	// Delete or Revoke Bucket
+		// ***********************
+		log.Info("OBC was deleted, proceeding with cleanup")
+		err = c.handleDeleteClaim(key, obc)
+		if err != nil {
+			log.Error(err, "error cleaning up OBC", "name", key)
+		}
+		return err
+	}
+
+	// *******************************************************
+	// Provision New Bucket or Grant Access to Existing Bucket
+	// *******************************************************
 	if !shouldProvision(obc) {
 		log.Info("skipping provision")
 		return nil
@@ -230,6 +230,9 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
 	}
+
+	// set finalizer in OBC so that resources can be cleaned up when the obc is deleted
+	obc.SetFinalizers([]string{finalizer})
 
 	// If the storage class contains the name of the bucket then we create access
 	// to an existing bucket. If the bucket name does not appear in the storage
@@ -334,24 +337,28 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	return nil
 }
 
-// Delete or Revoke access to bucket defined by passed-in key.
+// Delete or Revoke access to bucket defined by passed-in key and obc.
 // TODO each delete should retry a few times to mitigate intermittent errors
-func (c *Controller) handleDeleteClaim(key string) error {
+func (c *Controller) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
 	// Call `Delete` for new (greenfield) buckets with reclaimPolicy == "Delete".
 	// Call `Revoke` for new buckets with reclaimPolicy != "Delete".
 	// Call `Revoke` for existing (brownfield) buckets regardless of reclaimPolicy.
+
+	// remove finalizer so that OBC can be garbage collected
+	removeFinalizer(obc)
 
 	ob, cm, secret, err := c.getResourcesFromKey(key)
 	if err != nil {
 		return err
 	}
 
-	// ob or cm or secret (or 2 of the 3) can be nil, but Delete/Revoke cannot be called
-	// if the ob is nil. However if the secret and/or cm != nil we can delete them.
+	// Delete/Revoke cannot be called if the ob is nil; however, if the secret
+	// and/or cm != nil we can delete them
 	if ob == nil {
 		log.Error(nil, "nil ObjectBucket, assuming it has been deleted")
 		return c.deleteResources(nil, cm, secret)
 	}
+
 	if ob.Spec.ReclaimPolicy == nil {
 		log.Error(nil, "missing reclaimPolicy", "ob", ob.Name)
 		return nil
