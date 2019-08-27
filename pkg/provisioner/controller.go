@@ -319,10 +319,10 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	}
 
 	// create Secret and ConfigMap
-	if secret, err = createSecret(obc, ob.Spec.Authentication, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+	if secret, err = createSecret(obc, ob.Spec.Authentication, c.provisionerName, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error creating secret for OBC %q: %v", obcNsName, err)
 	}
-	if configMap, err = createConfigMap(obc, ob.Spec.Endpoint, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+	if configMap, err = createConfigMap(obc, ob.Spec.Endpoint, c.provisionerName, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error creating configmap for OBC %q: %v", obcNsName, err)
 	}
 
