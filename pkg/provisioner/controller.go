@@ -328,12 +328,14 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 
 	// Create OB
 	// Note: do not move ob create/update calls before secret or vice versa.
-	//   spec.Authentication is lost after create/update, which break secret creation
+	//   these operations overwrite the OB, dropping the spec.Authentication
+	//   field, which is necessary for secret creation.
 	setObjectBucketName(ob, key)
 	ob.Spec.StorageClassName = obc.Spec.StorageClassName
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 	ob.SetFinalizers([]string{finalizer})
+	ob.ObjectMeta.SetLabels(map[string]string{c.provisionerName: ""})
 
 	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error creating OB %q: %v", ob.Name, err)
