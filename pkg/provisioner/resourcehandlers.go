@@ -19,6 +19,7 @@ package provisioner
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/client-go/kubernetes"
@@ -286,4 +287,15 @@ func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, p
 		return (err == nil), err
 	})
 	return
+}
+
+func validateObjectBucket(ob *v1alpha1.ObjectBucket) error {
+	var errs []string
+	if ob.Spec.Endpoint == nil {
+		errs = append(errs, "Spec.Endpoint cannot be nil")
+	}
+	if ob.Spec.Authentication == nil {
+		errs = append(errs, "Spec.Authentication cannot be nil")
+	}
+	return fmt.Errorf("%s", strings.Join(errs, "; "))
 }

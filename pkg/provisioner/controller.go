@@ -18,6 +18,7 @@ package provisioner
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -322,6 +323,8 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("error %s bucket: %v", verb, err)
 	} else if ob == (&v1alpha1.ObjectBucket{}) {
 		return fmt.Errorf("provisioner returned nil/empty object bucket")
+	} else if err := validateObjectBucket(ob); err != nil {
+		return err
 	}
 
 	// create Secret and ConfigMap
