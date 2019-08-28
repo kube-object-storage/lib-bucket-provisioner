@@ -55,14 +55,7 @@ const (
 // newBucketConfigMap returns a config map from a given endpoint and ObjectBucketClaim.
 // A finalizer is added to reduce chances of the CM being accidentally deleted. An OwnerReference
 // is added so that the CM is automatically garbage collected when the parent OBC is deleted.
-func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim, provisionerName string) (*corev1.ConfigMap, error) {
-	if ep == nil {
-		return nil, fmt.Errorf("cannot construct configMap, got nil Endpoint")
-	}
-	if obc == nil {
-		return nil, fmt.Errorf("cannot construct configMap, got nil OBC")
-	}
-
+func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim, labels map[string]string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       obc.Name,
@@ -71,9 +64,7 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim, 
 			OwnerReferences: []metav1.OwnerReference{
 				makeOwnerReference(obc),
 			},
-			Labels: map[string]string{
-				provisionerName: "",
-			},
+			Labels: labels,
 		},
 		Data: map[string]string{
 			bucketName:      ep.BucketName,
@@ -82,7 +73,7 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim, 
 			bucketRegion:    ep.Region,
 			bucketSubRegion: ep.SubRegion,
 		},
-	}, nil
+	}
 }
 
 // newCredentialsSecret returns a secret with data appropriate to the supported authenticaion
@@ -90,15 +81,7 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim, 
 // A finalizer is added to reduce chances of the secret being accidentally deleted.
 // An OwnerReference is added so that the secret is automatically garbage collected when the
 // parent OBC is deleted.
-func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, provisionerName string) (*corev1.Secret, error) {
-
-	if obc == nil {
-		return nil, fmt.Errorf("ObjectBucketClaim required to generate secret")
-	}
-	if auth == nil {
-		return nil, fmt.Errorf("got nil authentication, nothing to do")
-	}
-
+func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, labels map[string]string) *corev1.Secret {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       obc.Name,
@@ -107,19 +90,20 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 			OwnerReferences: []metav1.OwnerReference{
 				makeOwnerReference(obc),
 			},
-			Labels: map[string]string{
-				provisionerName: "",
-			},
+			Labels: labels,
 		},
 	}
-
 	secret.StringData = auth.ToMap()
-	return secret, nil
+	return secret
 }
 
 // createObjectBucket creates an OB based on the passed-in ob spec.
 // Note: a finalizer has been added to reduce chances of the ob being accidentally deleted.
-func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
+func createObjectBucket(
+	ob *v1alpha1.ObjectBucket,
+	c versioned.Interface,
+	retryInterval,
+	retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
 	logD.Info("creating ObjectBucket", "name", ob.Name)
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
@@ -130,19 +114,20 @@ func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryI
 			// could be intermittent api error
 			log.Error(err, "probably not fatal, retrying")
 		}
-		return (err == nil), err
+		return err == nil, err
 	})
 	return
 }
 
-func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, provisionerName string, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
-	secret, err := newCredentialsSecret(obc, auth, provisionerName)
-	if err != nil {
-		return nil, err
-	}
-	logD.Info("creating Secret", "name", secret.Namespace+"/"+secret.Name)
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		secret, err = c.CoreV1().Secrets(obc.Namespace).Create(secret)
+func createSecret(
+	sec *corev1.Secret,
+	c kubernetes.Interface,
+	retryInterval,
+	retryTimeout time.Duration) (*corev1.Secret, error) {
+
+	logD.Info("creating Secret", "name", sec.Namespace+"/"+sec.Name)
+	err := wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
+		sec, err = c.CoreV1().Secrets(sec.Namespace).Create(sec)
 		if err != nil {
 			if errors.IsAlreadyExists(err) {
 				// The object already exists don't spam the logs, instead let the request be requeued
@@ -154,18 +139,14 @@ func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication
 		}
 		return true, nil
 	})
-	return secret, err
+	return sec, err
 }
 
-func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, provisionerName string, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.ConfigMap, error) {
-	configMap, err := newBucketConfigMap(ep, obc, provisionerName)
-	if err != nil {
-		return nil, err
-	}
+func createConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.ConfigMap, error) {
 
-	logD.Info("creating ConfigMap", "name", configMap.Namespace+"/"+configMap.Name)
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(configMap)
+	logD.Info("creating ConfigMap", "name", cm.Namespace+"/"+cm.Name)
+	err := wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
+		cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Create(cm)
 		if err != nil {
 			if errors.IsAlreadyExists(err) {
 				// The object already exists don't spam the logs, instead let the request be requeued
@@ -177,7 +158,7 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, pro
 		}
 		return true, nil
 	})
-	return configMap, err
+	return cm, err
 }
 
 // Only the finalizer needs to be removed. The CM will be garbage collected since its

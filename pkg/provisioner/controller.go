@@ -238,9 +238,10 @@ func (c *Controller) syncHandler(key string) error {
 func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) (err error) {
 
 	var (
-		ob        *v1alpha1.ObjectBucket
-		secret    *corev1.Secret
-		configMap *corev1.ConfigMap
+		ob               *v1alpha1.ObjectBucket
+		secret           *corev1.Secret
+		configMap        *corev1.ConfigMap
+		provisionerLabel = map[string]string{c.provisionerName: ""}
 	)
 	obcNsName := obc.Namespace + "/" + obc.Name
 
@@ -319,10 +320,16 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	}
 
 	// create Secret and ConfigMap
-	if secret, err = createSecret(obc, ob.Spec.Authentication, c.provisionerName, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+	if secret, err = createSecret(newCredentialsSecret(obc, ob.Spec.Authentication, provisionerLabel),
+		c.clientset,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error creating secret for OBC %q: %v", obcNsName, err)
 	}
-	if configMap, err = createConfigMap(obc, ob.Spec.Endpoint, c.provisionerName, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
+	if configMap, err = createConfigMap(newBucketConfigMap(ob.Spec.Endpoint, obc, provisionerLabel),
+		c.clientset,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error creating configmap for OBC %q: %v", obcNsName, err)
 	}
 
@@ -335,7 +342,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 	ob.SetFinalizers([]string{finalizer})
-	ob.ObjectMeta.SetLabels(map[string]string{c.provisionerName: ""})
+	ob.ObjectMeta.SetLabels(provisionerLabel)
 
 	if ob, err = createObjectBucket(ob, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error creating OB %q: %v", ob.Name, err)
