@@ -50,9 +50,6 @@ const (
 	finalizer = api.Domain + "/finalizer"
 
 	objectBucketNameFormat = "obc-%s-%s"
-
-	// child resource label
-	labelKey = "provisioner"
 )
 
 // newBucketConfigMap returns a config map from a given endpoint and ObjectBucketClaim.
@@ -75,7 +72,7 @@ func newBucketConfigMap(ep *v1alpha1.Endpoint, obc *v1alpha1.ObjectBucketClaim, 
 				makeOwnerReference(obc),
 			},
 			Labels: map[string]string{
-				labelKey: provisionerName,
+				provisionerName: "",
 			},
 		},
 		Data: map[string]string{
@@ -111,7 +108,7 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 				makeOwnerReference(obc),
 			},
 			Labels: map[string]string{
-				labelKey: provisionerName,
+				provisionerName: "",
 			},
 		},
 	}
