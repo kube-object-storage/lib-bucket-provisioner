@@ -245,6 +245,11 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	)
 	obcNsName := obc.Namespace + "/" + obc.Name
 
+	obc.ObjectMeta.SetLabels(provisionerLabel)
+	if obc, err = c.libClientset.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc); err != nil {
+		return fmt.Errorf("error setting provisioner label")
+	}
+
 	// first step is to update the OBC's status to pending
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
