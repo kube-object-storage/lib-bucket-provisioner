@@ -75,15 +75,27 @@ func NewController(provisionerName string, provisioner api.Provisioner, clientse
 
 	obcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: ctrl.enqueueOBC,
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			ctrl.enqueueOBC(newObj)
+		UpdateFunc: func(old, new interface{}) {
+			oldObc := old.(*v1alpha1.ObjectBucketClaim)
+			newObc := new.(*v1alpha1.ObjectBucketClaim)
+			if newObc.ResourceVersion == oldObc.ResourceVersion {
+				// periodic re-sync can be ignored
+				return
+			}
+			// if old and new both have deletionTimestamps we can also ignore the
+			// update since these events are occurring on an obc marked for deletion,
+			// eg. extra finalizers being added and deleted.
+			if newObc.ObjectMeta.DeletionTimestamp != nil && oldObc.ObjectMeta.DeletionTimestamp != nil {
+				return
+			}
+			// handle this update
+			ctrl.enqueueOBC(new)
 		},
 		DeleteFunc: func(obj interface{}) {
-			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-			if err != nil {
-				utilruntime.HandleError(err)
-			}
-			ctrl.queue.AddRateLimited(key)
+			// Since a finalizer is added to the obc and thus the obc will remain
+			// visible, we do not need to handle delete events here. Instead, obc
+			// deletes are indicated by the deletionTimestamp being non-nil.
+			return
 		},
 	})
 	return ctrl
@@ -168,26 +180,23 @@ func (c *Controller) processNextItemInQueue() bool {
 
 // Reconcile implements the Reconciler interface. This function contains the business logic
 // of the OBC Controller.
+// Note: the obc obtained from the key is not expected to be nil. In other words, this func is
+//   not called when informers detect an object is missing and trigger a formal delete event. 
+//   Instead, delete is indicated by the deletionTimestamp being non-nil on an update event.
 func (c *Controller) syncHandler(key string) error {
 
 	setLoggersWithRequest(key)
 	logD.Info("new Reconcile iteration")
 
 	obc, err := claimForKey(key, c.libClientset)
-	if err == nil && obc == nil {
-		return fmt.Errorf("no error and nil obc for request key %q", key)
+	if err != nil {
+		return fmt.Errorf("request key %q: %v", key, err)
+	}
+	if obc == nil {
+		return fmt.Errorf("unexpected nil obc for request key %q", key)
 	}
 
-	deleteEvent := false
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return fmt.Errorf("OBC for request key %q: %v", key, err)
-		}
-		// note: obc expected to be nil for the delete/revoke path
-		logD.Info("inferring deletion from missing obc", "name", key)
-		deleteEvent = true
-	}
-	deleteEvent = deleteEvent || obc.ObjectMeta.DeletionTimestamp != nil
+	deleteEvent := obc.ObjectMeta.DeletionTimestamp != nil
 
 	if deleteEvent {
 		// ***********************
@@ -348,16 +357,11 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 }
 
 // Delete or Revoke access to bucket defined by passed-in key and obc.
-// Note: obc can be nil if user removes the finalizer.
 // TODO each delete should retry a few times to mitigate intermittent errors
 func (c *Controller) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
 	// Call `Delete` for new (greenfield) buckets with reclaimPolicy == "Delete".
 	// Call `Revoke` for new buckets with reclaimPolicy != "Delete".
 	// Call `Revoke` for existing (brownfield) buckets regardless of reclaimPolicy.
-	if obc == nil {
-		logD.Info("deleting or revoking a nil OBC", "name", key)
-	}
-
 	ob, cm, secret, err := c.getResourcesFromKey(key)
 	if err != nil {
 		return err
@@ -438,10 +442,7 @@ func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *c
 // is to remove the finalizer on the OBC so it too will be garbage collected.
 // Returns err if we can't delete one or more of the resources, the final returned error being
 // somewhat arbitrary.
-func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket,
-	cm *corev1.ConfigMap, s *corev1.Secret,
-	obc *v1alpha1.ObjectBucketClaim) (err error) {
-
+func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) { 
 	name := obc.Namespace + "/" + obc.Name
 
 	if delErr := deleteObjectBucket(ob, c.libClientset); delErr != nil {
