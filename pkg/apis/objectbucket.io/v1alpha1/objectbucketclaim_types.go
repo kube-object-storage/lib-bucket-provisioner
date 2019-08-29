@@ -96,11 +96,13 @@ type ObjectBucketClaimStatus struct {
 	Phase ObjectBucketClaimStatusPhase
 }
 
+// ObjectBucketClaim is the Schema for the objectbucketclaims API
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:openapi-gen=true
-
-// ObjectBucketClaim is the Schema for the objectbucketclaims API
+// +kubebuilder:printcolumn:name="StorageClass",type="string",JSONPath=".spec.storageClassName",description="StorageClass"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Phase"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type ObjectBucketClaim struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -109,9 +111,8 @@ type ObjectBucketClaim struct {
 	Status ObjectBucketClaimStatus `json:"status,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
 // ObjectBucketClaimList contains a list of ObjectBucketClaim
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ObjectBucketClaimList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
