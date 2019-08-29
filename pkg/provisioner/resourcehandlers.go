@@ -180,14 +180,14 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, c k
 // ownerReference refers to the parent OBC.
 func releaseConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) (err error) {
 	if cm == nil {
+		logD.Info("got nil configmap, skipping")
 		return nil
 	}
-
 	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Get(cm.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	logD.Info("removing ConfigMaps's finalizer", "name", cm.Namespace+"/"+cm.Name)
+	logD.Info("removing configmap finalizer")
 	removeFinalizer(cm)
 	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Update(cm)
 	if err != nil {
@@ -201,18 +201,40 @@ func releaseConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) (err error) 
 // ownerReference refers to the parent OBC.
 func releaseSecret(sec *corev1.Secret, c kubernetes.Interface) (err error) {
 	if sec == nil {
-		log.Info("got nil secret, skipping")
+		logD.Info("got nil secret, skipping")
 		return nil
 	}
 	sec, err = c.CoreV1().Secrets(sec.Namespace).Get(sec.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	logD.Info("removing Secret's finalizer", "name", sec.Namespace+"/"+sec.Name)
+	logD.Info("removing secret finalizer")
 	removeFinalizer(sec)
 	sec, err = c.CoreV1().Secrets(sec.Namespace).Update(sec)
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// Remove the finalizer allowing the OBC to finally be deleted.
+func releaseOBC(obc *v1alpha1.ObjectBucketClaim, c versioned.Interface) (err error) {
+	if obc == nil {
+		logD.Info("got nil obc, skipping")
+		return nil
+	}
+	obcNsName := obc.Namespace + "/" + obc.Name
+	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(obc.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("unable to Get obc %q in order to remove finalizer: %v", obcNsName, err)
+	}
+	logD.Info("removing obc finalizer")
+	removeFinalizer(obc)
+
+	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
+	if err != nil {
+		return fmt.Errorf("unable to Update obc %q to reflect removed finalizer: %v", obcNsName, err)
 	}
 
 	return nil
@@ -227,7 +249,7 @@ func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error 
 		return nil
 	}
 
-	logD.Info("removing ObjectBucket's finalizer", "name", ob.Name)
+	logD.Info("removing ObjectBucket finalizer", "name", ob.Name)
 	removeFinalizer(ob)
 	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(ob)
 	if err != nil {
