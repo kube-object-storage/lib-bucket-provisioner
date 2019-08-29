@@ -297,5 +297,8 @@ func validateObjectBucket(ob *v1alpha1.ObjectBucket) error {
 	if ob.Spec.Authentication == nil {
 		errs = append(errs, "Spec.Authentication cannot be nil")
 	}
-	return fmt.Errorf("%s", strings.Join(errs, "; "))
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
 }
