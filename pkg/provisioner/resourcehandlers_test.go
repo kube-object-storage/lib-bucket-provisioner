@@ -127,9 +127,9 @@ func TestNewCredentialsSecret(t *testing.T) {
 func TestNewBucketConfigMap(t *testing.T) {
 
 	const (
-		obcName = "test-obc"
+		obcName   = "test-obc"
 		host      = "http://www.test.com"
-		name      = "bucket-name" // constify
+		name      = "bucket-name"
 		port      = 11111
 		region    = "region"
 		subRegion = "sub-region"
@@ -145,7 +145,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 			{
 				APIVersion:         "objectbucket.io/v1alpha1",
 				Kind:               "ObjectBucketClaim",
-				Name:               "test-obc",
+				Name:               obcName,
 				UID:                "",
 				Controller:         &T,
 				BlockOwnerDeletion: &T,

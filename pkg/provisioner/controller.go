@@ -322,7 +322,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("error %s bucket: %v", verb, err)
 	} else if ob == (&v1alpha1.ObjectBucket{}) {
 		return fmt.Errorf("provisioner returned nil/empty object bucket")
-	} else if err := validateObjectBucket(ob); err != nil {
+	} else if err = validateObjectBucket(ob); err != nil {
 		return err
 	}
 
