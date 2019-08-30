@@ -18,10 +18,11 @@ package provisioner
 
 import (
 	"fmt"
-	"reflect"
 	"regexp"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes/fake"
@@ -283,8 +284,8 @@ func TestStorageClassForClaim(t *testing.T) {
 				t.Errorf("StorageClassForClaim() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("StorageClassForClaim() = %v, want %v", got, tt.want)
+			if !cmp.Equal(tt.want, got) {
+				t.Errorf(cmp.Diff(tt.want, got))
 			}
 		})
 	}

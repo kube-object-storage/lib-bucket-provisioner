@@ -18,7 +18,6 @@ package provisioner
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -356,7 +355,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("error creating OB %q: %v", ob.Name, err)
 	}
 	if ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OB %q's status to %q:", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
+		return fmt.Errorf("error updating OB %q's status to %q: %s", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
 	}
 
 	// update OBC

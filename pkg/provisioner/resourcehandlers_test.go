@@ -17,10 +17,10 @@ limitations under the License.
 package provisioner
 
 import (
-	"encoding/json"
-	"reflect"
 	"strconv"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -37,11 +37,22 @@ func TestNewCredentialsSecret(t *testing.T) {
 		authSecret   = "test-auth-secret"
 	)
 
+	var T = true
+
 	testObjectMeta := metav1.ObjectMeta{
-		Name:      obcName,
-		Namespace: obcNamespace,
-		Finalizers: []string{
-			finalizer,
+		Name:       obcName,
+		Namespace:  obcNamespace,
+		Finalizers: []string{finalizer},
+		Labels:     map[string]string{},
+		OwnerReferences: []metav1.OwnerReference{
+			{
+				APIVersion:         "objectbucket.io/v1alpha1",
+				Kind:               "ObjectBucketClaim",
+				Name:               obcName,
+				UID:                "",
+				Controller:         &T,
+				BlockOwnerDeletion: &T,
+			},
 		},
 	}
 
@@ -56,24 +67,6 @@ func TestNewCredentialsSecret(t *testing.T) {
 		want    *corev1.Secret
 		wantErr bool
 	}{
-		{
-			name: "with nil ObjectBucketClaim ptr",
-			args: args{
-				authentication: &v1alpha1.Authentication{},
-				obc:            nil,
-			},
-			want:    nil,
-			wantErr: true,
-		},
-		{
-			name: "with nil Authentication ptr",
-			args: args{
-				obc:            &v1alpha1.ObjectBucketClaim{},
-				authentication: nil,
-			},
-			want:    nil,
-			wantErr: true,
-		},
 		{
 			name: "with an authentication type defined (access keys)",
 			args: args{
@@ -122,14 +115,11 @@ func TestNewCredentialsSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newCredentialsSecret(tt.args.obc, tt.args.authentication)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewCredentailsSecret() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			got := newCredentialsSecret(tt.args.obc, tt.args.authentication, map[string]string{})
+			if !cmp.Equal(tt.want, got) {
+				t.Errorf(cmp.Diff(tt.want, got))
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("NewCredentailsSecret() = %v, want %v", got, tt.want)
-			}
+
 		})
 	}
 }
@@ -137,17 +127,30 @@ func TestNewCredentialsSecret(t *testing.T) {
 func TestNewBucketConfigMap(t *testing.T) {
 
 	const (
+		obcName = "test-obc"
 		host      = "http://www.test.com"
-		name      = "bucket-name"
+		name      = "bucket-name" // constify
 		port      = 11111
 		region    = "region"
 		subRegion = "sub-region"
 	)
+	var T = true
 
 	objMeta := metav1.ObjectMeta{
 		Name:       "test-obc",
 		Namespace:  "test-obc-namespace",
 		Finalizers: []string{finalizer},
+		Labels:     nil,
+		OwnerReferences: []metav1.OwnerReference{
+			{
+				APIVersion:         "objectbucket.io/v1alpha1",
+				Kind:               "ObjectBucketClaim",
+				Name:               "test-obc",
+				UID:                "",
+				Controller:         &T,
+				BlockOwnerDeletion: &T,
+			},
+		},
 	}
 
 	type args struct {
@@ -251,13 +254,9 @@ func TestNewBucketConfigMap(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
-			got, err := newBucketConfigMap(tt.args.ep, tt.args.obc)
-			if (err != nil) == !tt.wantErr {
-				t.Errorf("newBucketConfigMap() error = %v, wantErr %v", err, tt.wantErr)
-			} else if !reflect.DeepEqual(got, tt.want) {
-				gotjson, _ := json.MarshalIndent(got, "", "\t")
-				wantjson, _ := json.MarshalIndent(tt.want, "", "\t")
-				t.Errorf("newBucketConfigMap() = %v, want %v", string(gotjson), string(wantjson))
+			got := newBucketConfigMap(tt.args.ep, tt.args.obc, nil)
+			if !cmp.Equal(tt.want, got) {
+				t.Errorf(cmp.Diff(tt.want, got))
 			}
 		})
 	}
