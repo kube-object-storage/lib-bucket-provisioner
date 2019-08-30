@@ -23,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -74,15 +75,27 @@ func NewController(provisionerName string, provisioner api.Provisioner, clientse
 
 	obcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: ctrl.enqueueOBC,
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			// noop
+		UpdateFunc: func(old, new interface{}) {
+			oldObc := old.(*v1alpha1.ObjectBucketClaim)
+			newObc := new.(*v1alpha1.ObjectBucketClaim)
+			if newObc.ResourceVersion == oldObc.ResourceVersion {
+				// periodic re-sync can be ignored
+				return
+			}
+			// if old and new both have deletionTimestamps we can also ignore the
+			// update since these events are occurring on an obc marked for deletion,
+			// eg. extra finalizers being added and deleted.
+			if newObc.ObjectMeta.DeletionTimestamp != nil && oldObc.ObjectMeta.DeletionTimestamp != nil {
+				return
+			}
+			// handle this update
+			ctrl.enqueueOBC(new)
 		},
 		DeleteFunc: func(obj interface{}) {
-			key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
-			if err != nil {
-				utilruntime.HandleError(err)
-			}
-			ctrl.queue.AddRateLimited(key)
+			// Since a finalizer is added to the obc and thus the obc will remain
+			// visible, we do not need to handle delete events here. Instead, obc
+			// deletes are indicated by the deletionTimestamp being non-nil.
+			return
 		},
 	})
 	return ctrl
@@ -136,7 +149,7 @@ func (c *Controller) processNextItemInQueue() bool {
 		// We expect strings to come off the workqueue. These are of the
 		// form namespace/name. We do this as the delayed nature of the
 		// workqueue means the items in the informer cache may actually be
-		// more up to date that when the item was initially put onto the
+		// more up to date than when the item was initially put onto the
 		// workqueue.
 		if key, ok = obj.(string); !ok {
 			// As the item in the workqueue is actually invalid, we call
@@ -165,36 +178,41 @@ func (c *Controller) processNextItemInQueue() bool {
 	return true
 }
 
-// Reconcile implements the Reconciler interface.  This function contains the business logic of the
-// OBC Controller.  Currently, the process strictly serves as a POC for an OBC Controller and is
-// extremely fragile.
+// Reconcile implements the Reconciler interface. This function contains the business logic
+// of the OBC Controller.
+// Note: the obc obtained from the key is not expected to be nil. In other words, this func is
+//   not called when informers detect an object is missing and trigger a formal delete event. 
+//   Instead, delete is indicated by the deletionTimestamp being non-nil on an update event.
 func (c *Controller) syncHandler(key string) error {
 
 	setLoggersWithRequest(key)
-
 	logD.Info("new Reconcile iteration")
 
 	obc, err := claimForKey(key, c.libClientset)
-
-	/**************************
-	 Delete or Revoke Bucket
-	***************************/
 	if err != nil {
-		// the OBC was deleted or some other error
-		if errors.IsNotFound(err) {
-			log.Info("looks like the OBC was deleted, proceeding with cleanup")
-			err = c.handleDeleteClaim(key)
-			if err != nil {
-				log.Error(err, "error cleaning up OBC", "name", key)
-			}
-			return err
-		}
-		return fmt.Errorf("error getting claim for request key %q", key)
+		return fmt.Errorf("request key %q: %v", key, err)
+	}
+	if obc == nil {
+		return fmt.Errorf("unexpected nil obc for request key %q", key)
 	}
 
-	/*******************************************************
-	 Provision New Bucket or Grant Access to Existing Bucket
-	********************************************************/
+	deleteEvent := obc.ObjectMeta.DeletionTimestamp != nil
+
+	if deleteEvent {
+		// ***********************
+		// Delete or Revoke Bucket
+		// ***********************
+		log.Info("OBC deleted, proceeding with cleanup")
+		err = c.handleDeleteClaim(key, obc)
+		if err != nil {
+			log.Error(err, "error cleaning up OBC", "name", key)
+		}
+		return err
+	}
+
+	// *******************************************************
+	// Provision New Bucket or Grant Access to Existing Bucket
+	// *******************************************************
 	if !shouldProvision(obc) {
 		log.Info("skipping provision")
 		return nil
@@ -231,6 +249,11 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
 	}
 
+	// set finalizer in OBC so that resources can be cleaned up when the obc is deleted
+	if err = c.protectOBC(obc); err != nil {
+		return err
+	}
+
 	// If the storage class contains the name of the bucket then we create access
 	// to an existing bucket. If the bucket name does not appear in the storage
 	// class then we dynamically provision a new bucket.
@@ -247,7 +270,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 					log.Error(err, "error deleting storage artifacts")
 				}
 			}
-			_ = c.deleteResources(ob, configMap, secret)
+			_ = c.deleteResources(ob, configMap, secret, nil)
 		}
 	}()
 
@@ -322,7 +345,6 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	// update OBC
 	obc.Spec.ObjectBucketName = ob.Name
 	obc.Spec.BucketName = bucketName
-
 	if obc, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
 		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err)
 	}
@@ -334,24 +356,24 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	return nil
 }
 
-// Delete or Revoke access to bucket defined by passed-in key.
+// Delete or Revoke access to bucket defined by passed-in key and obc.
 // TODO each delete should retry a few times to mitigate intermittent errors
-func (c *Controller) handleDeleteClaim(key string) error {
+func (c *Controller) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
 	// Call `Delete` for new (greenfield) buckets with reclaimPolicy == "Delete".
 	// Call `Revoke` for new buckets with reclaimPolicy != "Delete".
 	// Call `Revoke` for existing (brownfield) buckets regardless of reclaimPolicy.
-
 	ob, cm, secret, err := c.getResourcesFromKey(key)
 	if err != nil {
 		return err
 	}
 
-	// ob or cm or secret (or 2 of the 3) can be nil, but Delete/Revoke cannot be called
-	// if the ob is nil. However if the secret and/or cm != nil we can delete them.
+	// Delete/Revoke cannot be called if the ob is nil; however, if the secret
+	// and/or cm != nil we can delete them
 	if ob == nil {
 		log.Error(nil, "nil ObjectBucket, assuming it has been deleted")
-		return c.deleteResources(nil, cm, secret)
+		return c.deleteResources(nil, cm, secret, obc)
 	}
+
 	if ob.Spec.ReclaimPolicy == nil {
 		log.Error(nil, "missing reclaimPolicy", "ob", ob.Name)
 		return nil
@@ -376,7 +398,7 @@ func (c *Controller) handleDeleteClaim(key string) error {
 		}
 	}
 
-	return c.deleteResources(ob, cm, secret)
+	return c.deleteResources(ob, cm, secret, obc)
 }
 
 func (c *Controller) supportedProvisioner(provisioner string) bool {
@@ -413,29 +435,53 @@ func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *c
 }
 
 // Deleting the resources generated by a Provision or Grant call is triggered by the delete of
-// the OBC. Since the secret and configmap's ownerReference is the OBC they will be garbage
-// collected by k8s once their finalizers are removed. However, the OB must be explicitly
-// deleted since it is a global resource and cannot have a namespaced ownerReference.
-// Returns err if we can't delete one or more of the resources. The final error is somewhat arbitrary.
-func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret) (err error) {
-	if ob != nil {
-		if delErr := deleteObjectBucket(ob, c.libClientset); delErr != nil {
-			log.Error(delErr, "error deleting objectBucket", ob.Namespace+"/"+ob.Name)
-			err = delErr
-		}
+// the OBC. However, a finalizer is added to the OBC so that we can cleanup up the other resources
+// created by a Provision or Grant call. Since the secret and configmap's ownerReference is the OBC
+// they will be garbage collected once their finalizers are removed. The OB must be explicitly
+// deleted since it is a global resource and cannot have a namespaced ownerReference. The last step
+// is to remove the finalizer on the OBC so it too will be garbage collected.
+// Returns err if we can't delete one or more of the resources, the final returned error being
+// somewhat arbitrary.
+func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) { 
+	name := obc.Namespace + "/" + obc.Name
+
+	if delErr := deleteObjectBucket(ob, c.libClientset); delErr != nil {
+		log.Error(delErr, "error deleting objectBucket", ob.Name)
+		err = delErr
 	}
-	if s != nil {
-		if delErr := releaseSecret(s, c.clientset); delErr != nil {
-			log.Error(delErr, "error releasing secret", s.Namespace+"/"+s.Name)
-			err = delErr
-		}
+	if delErr := releaseSecret(s, c.clientset); delErr != nil {
+		log.Error(delErr, "error releasing secret", name)
+		err = delErr
 	}
-	if cm != nil {
-		if delErr := releaseConfigMap(cm, c.clientset); delErr != nil {
-			log.Error(delErr, "error releasing configMap", cm.Namespace+"/"+cm.Name)
-			err = delErr
-		}
+	if delErr := releaseConfigMap(cm, c.clientset); delErr != nil {
+		log.Error(delErr, "error releasing configMap", name)
+		err = delErr
+	}
+	if delErr := releaseOBC(obc, c.libClientset); delErr != nil {
+		log.Error(delErr, "error releasing obc", name)
+		err = delErr
 	}
 
 	return err
+}
+
+// Add a finalizer to the OBC so that resource deletion can be orchestrated.
+func (c *Controller) protectOBC(obc *v1alpha1.ObjectBucketClaim) (err error) {
+
+	clib := c.libClientset
+	obcNsName := obc.Namespace + "/" + obc.Name
+
+	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(obc.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("unable to Get obc %q for protection: %v", obcNsName, err)
+	}
+
+	logD.Info("adding obc finalizer")
+	obc.SetFinalizers([]string{finalizer})
+	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
+	if err != nil {
+		return fmt.Errorf("unable to Update obc %q for protection: %v", obcNsName, err)
+	}
+
+	return nil
 }
