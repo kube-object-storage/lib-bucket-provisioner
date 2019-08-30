@@ -260,14 +260,14 @@ func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryIn
 	logD.Info("updating", "obc", obc.Namespace+"/"+obc.Name)
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
 		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
-		return (err == nil), err
+		return err == nil, err
 	})
 	return
 }
 
 func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucketClaim, err error) {
-	logD.Info("updating status:", "obc", obc.Namespace+"/"+obc.Name, "old status",
-		obc.Status.Phase, "new status", phase)
+	logD.Info("updating objectBucketClaim status:", "current phase",
+		obc.Status.Phase, "next phase", phase)
 	obc.Status.Phase = phase
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
@@ -278,13 +278,13 @@ func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBuc
 }
 
 func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, phase v1alpha1.ObjectBucketStatusPhase, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
-	logD.Info("updating status:", "ob", ob.Name, "old status", ob.Status.Phase,
-		"new status", phase)
+	logD.Info("updating objectBucket status:", "ob", ob.Name, "current phase", ob.Status.Phase,
+		"next phase", phase)
 	ob.Status.Phase = phase
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
 		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(ob)
-		return (err == nil), err
+		return err == nil, err
 	})
 	return
 }
@@ -301,4 +301,10 @@ func validateObjectBucket(ob *v1alpha1.ObjectBucket) error {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+func setClaimOwnership(obc *v1alpha1.ObjectBucketClaim, labels map[string]string, finalizers []string) *v1alpha1.ObjectBucketClaim {
+	obc.ObjectMeta.SetFinalizers(finalizers)
+	obc.ObjectMeta.SetLabels(labels)
+	return obc
 }
