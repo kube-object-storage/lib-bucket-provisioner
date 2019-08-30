@@ -67,6 +67,7 @@ metadata:
 12. create the obc (_examples/greenfield/_)
 13. finally, run the s3-provisioner:
    `bin/awss3provisioner -alsologtostderr -v=2`
+14. [clean up](hack/cleanup.sh) resources to test the next change.
 
 # TODO
 
