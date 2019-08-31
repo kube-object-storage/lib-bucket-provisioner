@@ -1,31 +1,10 @@
----
-sudo: false
-
 os: linux
-
+dist: xenial
+sudo: required
 language: go
-
 go:
   - 1.12.x
-
-before_install:
-  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-
 install:
-  - dep ensure -v
-
-before_script:
-  - go version
-  - export GOBIN="$GOPATH/bin"
-  - go get golang.org/x/tools/cmd/goimports
-  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.16.0 && golangci-lint --version
-
+  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 script:
-  - ./hack/go.sh ci-checks
-
-deploy:
-  - provider: script
-    script: ./hack/go.sh ci-checks
-    on:
-      branch: master
-
+  - make
