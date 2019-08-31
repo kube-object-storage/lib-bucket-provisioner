@@ -21,8 +21,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// ObjectBucketClaimKind is the kind name ObjectBucketClaim
 const ObjectBucketClaimKind = "ObjectBucketClaim"
 
+// ObjectBucketClaimGVK returns a group-version-kind
 func ObjectBucketClaimGVK() schema.GroupVersionKind {
 	return GroupKindVersion(ObjectBucketClaimKind)
 }

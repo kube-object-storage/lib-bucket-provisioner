@@ -30,7 +30,7 @@ vet:
 
 lint: vendor
 	go get -u golang.org/x/lint/golint
-	golint ./pkg/...
+	golint -set_exit_status=1 ./pkg/...
 	@echo "lint - done."
 .PHONY: lint
 

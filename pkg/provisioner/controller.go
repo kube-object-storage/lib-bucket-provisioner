@@ -43,8 +43,7 @@ type controller interface {
 	SetLabels(map[string]string)
 }
 
-// Provisioner is a CRD Controller responsible for executing the Reconcile() function
-// in response to OBC events.
+// obcController is a CRD Controller responsible for executing the Reconcile() function in response to OB and OBC events.
 type obcController struct {
 	clientset    kubernetes.Interface
 	libClientset versioned.Interface
@@ -63,7 +62,16 @@ type obcController struct {
 
 var _ controller = &obcController{}
 
-func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *obcController {
+// NewController initializes a new controller
+func NewController(
+	provisionerName string,
+	provisioner api.Provisioner,
+	clientset kubernetes.Interface,
+	crdClientSet versioned.Interface,
+	obcInformer informers.ObjectBucketClaimInformer,
+	obInformer informers.ObjectBucketInformer,
+) *obcController {
+
 	ctrl := &obcController{
 		clientset:    clientset,
 		libClientset: crdClientSet,
@@ -108,6 +116,7 @@ func NewController(provisionerName string, provisioner api.Provisioner, clientse
 	return ctrl
 }
 
+// Start runs the controller in the current go routine
 func (c *obcController) Start(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()

@@ -16,4 +16,5 @@ limitations under the License.
 
 package api
 
+// Domain is the api domain
 const Domain = "objectbucket.io"

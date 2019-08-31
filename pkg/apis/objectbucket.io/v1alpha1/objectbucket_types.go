@@ -22,8 +22,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// ObjectBucketKind is the kind name ObjectBucket
 const ObjectBucketKind = "ObjectBucket"
 
+// ObjectBucketGVK returns a group-version-kind
 func ObjectBucketGVK() schema.GroupVersionKind {
 	return GroupKindVersion(ObjectBucketKind)
 }

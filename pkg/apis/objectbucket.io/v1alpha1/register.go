@@ -30,8 +30,10 @@ import (
 // SchemeGroupVersion is group version used to register these objects
 var SchemeGroupVersion = schema.GroupVersion{Group: objectbucketio.GroupName, Version: "v1alpha1"}
 
+// Version is the api version
 const Version = "v1alpha1"
 
+// GroupKindVersion returns a group-version-kind
 func GroupKindVersion(kind string) schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind(kind)
 }
@@ -47,8 +49,10 @@ func Resource(resource string) schema.GroupResource {
 }
 
 var (
+	// SchemeBuilder is the package scheme builder
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
-	AddToScheme   = SchemeBuilder.AddToScheme
+	// AddToScheme adds a func to scheme builder
+	AddToScheme = SchemeBuilder.AddToScheme
 )
 
 // Adds the list of known types to Scheme.

@@ -22,7 +22,7 @@ import (
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 )
 
-// All provisioners must implement the Provisioner interface which defines the
+// Provisioner is the interface for all provisioners which defines the
 // methods used to create and delete new buckets, and to grant or revoke access
 // to buckets within the object store.
 type Provisioner interface {
