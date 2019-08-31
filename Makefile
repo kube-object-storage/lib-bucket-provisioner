@@ -3,7 +3,7 @@ all: build fmt imports vet lint test
 .PHONY: all
 
 vendor:
-	dep ensure -v
+	dep ensure
 	@echo "vendor - done."
 .PHONY: vendor
 
