@@ -1,6 +1,8 @@
----
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: object-bucket-class
-provisioner: "aws-s3.io/bucket"
+provisioner: objectbucket.io/bucket
+reclaimPolicy: Delete
+parameters:
+  bucketName: optional-brownfield-bucket
