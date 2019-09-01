@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lib-bucket-provisioner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: lib-bucket-provisioner
+  template:
+    metadata:
+      labels:
+        name: lib-bucket-provisioner
+    spec:
+      serviceAccountName: lib-bucket-provisioner
+      containers:
+        - name: lib-bucket-provisioner
+          # Replace this with the built image name
+          image: REPLACE_IMAGE
+          command:
+          - lib-bucket-provisioner
+          imagePullPolicy: Always
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPERATOR_NAME
+              value: "lib-bucket-provisioner"
