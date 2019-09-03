@@ -37,7 +37,6 @@ type Provisioner struct {
 	Provisioner     api.Provisioner
 	claimController controller
 	informerFactory informers.SharedInformerFactory
-	// TODO context?
 }
 
 func initLoggers() {
@@ -69,6 +68,7 @@ func initFlags() {
 func NewProvisioner(
 	cfg *rest.Config,
 	provisionerName string,
+	provisionerVersion string,
 	provisioner api.Provisioner,
 	namespace string,
 ) (*Provisioner, error) {
@@ -84,7 +84,7 @@ func NewProvisioner(
 	p := &Provisioner{
 		Name:            provisionerName,
 		informerFactory: informerFactory,
-		claimController: NewController(provisionerName, provisioner, clientset, libClientset,
+		claimController: NewController(provisionerName, provisionerVersion, provisioner, clientset, libClientset,
 			informerFactory.Objectbucket().V1alpha1().ObjectBucketClaims(),
 			informerFactory.Objectbucket().V1alpha1().ObjectBuckets()),
 	}
