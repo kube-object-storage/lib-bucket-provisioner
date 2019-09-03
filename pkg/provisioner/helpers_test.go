@@ -18,10 +18,11 @@ package provisioner
 
 import (
 	"fmt"
-	"reflect"
 	"regexp"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes/fake"
@@ -110,7 +111,7 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 			if got := shouldProvision(tt.args.obc); got != tt.want {
-				t.Errorf("ObjectBucketClaimReconciler.shouldProvision() = %v, want %v", got, tt.want)
+				t.Errorf("want = %v, got %v", tt.want, got)
 			}
 		})
 	}
@@ -157,18 +158,18 @@ func Test_objectBucketClaimReconciler_claimFromKey(t *testing.T) {
 
 		if tt.want != nil {
 			if _, err = ec.ObjectbucketV1alpha1().ObjectBucketClaims(tt.want.Namespace).Create(tt.want); err != nil {
-				t.Errorf("ObjectBucketClaimReconciler.claimForKey() error = %v,", fmt.Sprintf("error precreating object: %v", err))
+				t.Errorf("error precreating object: %v", err)
 			}
 		}
 
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := claimForKey(tt.args.key, ec)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ObjectBucketClaimReconciler.claimForKey() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("wantErr %v, error = %v", tt.wantErr, err)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ObjectBucketClaimReconciler.claimForKey() = %v, want %v", got, tt.want)
+			if !cmp.Equal(tt.want, got) {
+				t.Errorf(cmp.Diff(tt.want, got))
 			}
 		})
 	}
@@ -280,11 +281,11 @@ func TestStorageClassForClaim(t *testing.T) {
 
 			got, err := storageClassForClaim(tt.args.client, tt.args.obc)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("StorageClassForClaim() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("wantErr %v, error = %v ", tt.wantErr, err)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("StorageClassForClaim() = %v, want %v", got, tt.want)
+			if !cmp.Equal(tt.want, got) {
+				t.Errorf(cmp.Diff(tt.want, got))
 			}
 		})
 	}
@@ -328,12 +329,12 @@ func TestGenerateBucketName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := generateBucketName(tt.args.prefix)
 			if len(got) > maxNameLen {
-				t.Errorf("GenerateName() wanted len <= %d, got len %d", maxNameLen, len(got))
+				t.Errorf("wanted len <= %d, got len %d", maxNameLen, len(got))
 			}
 			if match, err := regexp.MatchString(pattern, got); err != nil {
 				t.Errorf("error matching pattern: %v", err)
 			} else if !match {
-				t.Errorf("GenerateName() want match: %v, got %v", pattern, got)
+				t.Errorf("want match: %v, got %v", pattern, got)
 			}
 		})
 	}
