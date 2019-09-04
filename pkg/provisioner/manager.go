@@ -18,6 +18,7 @@ package provisioner
 
 import (
 	"flag"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -79,12 +80,16 @@ func NewProvisioner(
 	libClientset := versioned.NewForConfigOrDie(cfg)
 	clientset := kubernetes.NewForConfigOrDie(cfg)
 
-	informerFactory := informers.NewSharedInformerFactory(libClientset, 0)
+	informerFactory := setupInformerFactory(libClientset, 0, namespace)
 
 	p := &Provisioner{
 		Name:            provisionerName,
 		informerFactory: informerFactory,
-		claimController: NewController(provisionerName, provisioner, clientset, libClientset,
+		claimController: NewController(
+			provisionerName,
+			provisioner,
+			clientset,
+			libClientset,
 			informerFactory.Objectbucket().V1alpha1().ObjectBucketClaims(),
 			informerFactory.Objectbucket().V1alpha1().ObjectBuckets()),
 	}
@@ -104,4 +109,17 @@ func (p *Provisioner) Run(stopCh <-chan struct{}) (err error) {
 	}()
 	<-stopCh
 	return
+}
+
+// setupInformerFactory generates an informer factory scoped to the given namespace if provided or
+// to the cluster if empty.
+func setupInformerFactory(c versioned.Interface, resyncPeriod time.Duration, ns string) (inf informers.SharedInformerFactory) {
+	if len(ns) > 0 {
+		return informers.NewSharedInformerFactoryWithOptions(
+			c,
+			resyncPeriod,
+			informers.WithNamespace(ns),
+		)
+	}
+	return informers.NewSharedInformerFactory(c, resyncPeriod)
 }
