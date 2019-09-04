@@ -303,7 +303,7 @@ func validateObjectBucket(ob *v1alpha1.ObjectBucket) error {
 	return nil
 }
 
-func setClaimOwnership(obc *v1alpha1.ObjectBucketClaim, labels map[string]string, finalizers []string) *v1alpha1.ObjectBucketClaim {
+func setLabelAndFinalizer(obc *v1alpha1.ObjectBucketClaim, labels map[string]string, finalizers []string) *v1alpha1.ObjectBucketClaim {
 	obc.ObjectMeta.SetFinalizers(finalizers)
 	obc.ObjectMeta.SetLabels(labels)
 	return obc

@@ -250,9 +250,9 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		return fmt.Errorf("error updating OBC %q's status to %q: %v", key, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
 	}
 
-	setClaimOwnership(obc, provisionerLabel, []string{finalizer})
+	setLabelAndFinalizer(obc, provisionerLabel, []string{finalizer})
 	if obc, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error setting provisioner label")
+		return fmt.Errorf("error updating OBC")
 	}
 
 	// If the storage class contains the name of the bucket then we create access
