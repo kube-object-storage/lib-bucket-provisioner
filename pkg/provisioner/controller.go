@@ -52,26 +52,24 @@ type Controller struct {
 	obHasSynced  cache.InformerSynced
 	queue        workqueue.RateLimitingInterface
 
-	provisioner        api.Provisioner
-	provisionerName    string
-	provisionerVersion string
+	provisioner     api.Provisioner
+	provisionerName string
 }
 
 var _ controller = &Controller{}
 
-func NewController(provisionerName string, operatorVersion string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *Controller {
+func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *Controller {
 	ctrl := &Controller{
-		clientset:          clientset,
-		libClientset:       crdClientSet,
-		obcLister:          obcInformer.Lister(),
-		obLister:           obInformer.Lister(),
-		obcInformer:        obcInformer,
-		obcHasSynced:       obcInformer.Informer().HasSynced,
-		obHasSynced:        obInformer.Informer().HasSynced,
-		queue:              workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
-		provisionerName:    provisionerName,
-		provisionerVersion: operatorVersion,
-		provisioner:        provisioner,
+		clientset:       clientset,
+		libClientset:    crdClientSet,
+		obcLister:       obcInformer.Lister(),
+		obLister:        obInformer.Lister(),
+		obcInformer:     obcInformer,
+		obcHasSynced:    obcInformer.Informer().HasSynced,
+		obHasSynced:     obInformer.Informer().HasSynced,
+		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		provisionerName: provisionerName,
+		provisioner:     provisioner,
 	}
 
 	obcInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -242,12 +240,13 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		ob               *v1alpha1.ObjectBucket
 		secret           *corev1.Secret
 		configMap        *corev1.ConfigMap
-		provisionerLabel = map[string]string{c.provisionerName: c.provisionerVersion}
+		provisionerLabel = map[string]string{c.provisionerName: ""}
 	)
+	obcNsName := obc.Namespace + "/" + obc.Name
 
 	// first step is to update the OBC's status to pending
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", key, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
+		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
 	}
 
 	setLabelAndFinalizer(obc, provisionerLabel, []string{finalizer})
@@ -327,14 +326,14 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		c.clientset,
 		defaultRetryBaseInterval,
 		defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error creating secret for OBC %q: %v", key, err)
+		return fmt.Errorf("error creating secret for OBC %q: %v", obcNsName, err)
 	}
 	if configMap, err = createConfigMap(
 		newBucketConfigMap(ob.Spec.Endpoint, obc, provisionerLabel),
 		c.clientset,
 		defaultRetryBaseInterval,
 		defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error creating configmap for OBC %q: %v", key, err)
+		return fmt.Errorf("error creating configmap for OBC %q: %v", obcNsName, err)
 	}
 
 	// Create OB
@@ -359,10 +358,10 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	obc.Spec.ObjectBucketName = ob.Name
 	obc.Spec.BucketName = bucketName
 	if obc, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q: %v", key, err)
+		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err)
 	}
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", key, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
+		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
 	}
 
 	log.Info("provisioning succeeded")
