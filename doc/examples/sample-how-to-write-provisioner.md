@@ -35,7 +35,7 @@ To contribute or view the library code take a look [here](https://github.com/kub
 
 ### Key Concepts
 
-- Library uses the [ObjectBucket and ObjectBucketClaim](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml) CustomResourceDefinition that is very closely modeled after the existing Kubernetes PV and PVC patterns.
+- Library uses the [ObjectBucket and ObjectBucketClaim](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/crds) CustomResourceDefinition that is very closely modeled after the existing Kubernetes PV and PVC patterns.
 
 - The Library and Provisoners also use other common Kubernetes Dynamic Provisioning resources, such as StorageClasses, Secrets and ConfigMaps.
 
@@ -295,7 +295,7 @@ See links above for some guidance on how one might go about doing that.
  # go build -a -o ./bin/aws-s3-provisioner  ./cmd/...
 ```
 
-2. Install the [OB/OBC CRDs](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/customResourceDefinitions.yaml) on your cluster.
+2. Install the [OB/OBC CRDs](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/crds) on your cluster.
 
 
 3. Push the binary to a remote cluster to test or run it on your local cluster if you have one.

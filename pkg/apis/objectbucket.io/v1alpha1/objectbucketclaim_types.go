@@ -44,30 +44,44 @@ const (
 
 // ObjectBucketClaimSpec defines the desired state of ObjectBucketClaim
 type ObjectBucketClaimSpec struct {
+
 	// StorageClass names the StorageClass object representing the desired provisioner and parameters
 	StorageClassName string `json:"storageClassName"`
+
 	// BucketName (not recommended) the name of the bucket.  Caution!
 	// In-store bucket names may collide across namespaces.  If you define
 	// the name yourself, try to make it as unique as possible.
+	// +optional
 	BucketName string `json:"bucketName,omityempty"`
+
 	// GenerateBucketName (recommended) a prefix for a bucket name to be
 	// followed by a hyphen and 5 random characters. Protects against
 	// in-store name collisions.
+	// +optional
 	GenerateBucketName string `json:"generateBucketName,omitempty"`
+
 	// SSL whether connection to the bucket requires SSL Authentication or not
-	SSL bool `json:"ssl"`
+	// +optional
+	SSL bool `json:"ssl,omitempty"`
+
 	// Generic predefined bucket ACLs for use by provisioners
 	// Available BucketCannedACLs are:
 	//    BucketCannedACLPrivate
 	//    BucketCannedACLPublicRead
 	//    BucketCannedACLPublicReadWrite
 	//    BucketCannedACLAuthenticatedRead
-	BucketCannedACL BucketCannedACL `json:"cannedBucketAcl"`
+	// +optional
+	BucketCannedACL BucketCannedACL `json:"cannedBucketAcl,omitempty"`
+
 	// Versioned determines if versioning is enabled
-	Versioned bool `json:"versioned"`
+	// +optional
+	Versioned bool `json:"versioned,omitempty"`
+
 	// AdditionalConfig gives providers a location to set
 	// proprietary config values (tenant, namespace, etc)
-	AdditionalConfig map[string]string `json:"additionalConfig"`
+	// +optional
+	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+
 	// ObjectBucketName is the name of the object bucket resource.  This is the authoritative
 	// determintaion for binding.
 	ObjectBucketName string
@@ -93,7 +107,7 @@ const (
 
 // ObjectBucketClaimStatus defines the observed state of ObjectBucketClaim
 type ObjectBucketClaimStatus struct {
-	Phase ObjectBucketClaimStatusPhase
+	Phase ObjectBucketClaimStatusPhase `json:"phase,omitempty"`
 }
 
 // ObjectBucketClaim is the Schema for the objectbucketclaims API
