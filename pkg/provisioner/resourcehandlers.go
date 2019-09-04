@@ -257,7 +257,7 @@ func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error 
 
 func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucketClaim, err error) {
 
-	logD.Info("updating", "obc", obc.Namespace+"/"+obc.Name)
+	logD.Info("updating objectBucketClaim")
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
 		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
 		return err == nil, err

@@ -242,11 +242,10 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		configMap        *corev1.ConfigMap
 		provisionerLabel = map[string]string{c.provisionerName: ""}
 	)
-	obcNsName := obc.Namespace + "/" + obc.Name
 
 	// first step is to update the OBC's status to pending
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhasePending, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
+		return fmt.Errorf("error updating OBCstatus to %q: %v", v1alpha1.ObjectBucketClaimStatusPhasePending, err)
 	}
 
 	setLabelAndFinalizer(obc, provisionerLabel, []string{finalizer})
@@ -326,14 +325,14 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		c.clientset,
 		defaultRetryBaseInterval,
 		defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error creating secret for OBC %q: %v", obcNsName, err)
+		return fmt.Errorf("error creating secret for OBC: %v", err)
 	}
 	if configMap, err = createConfigMap(
 		newBucketConfigMap(ob.Spec.Endpoint, obc, provisionerLabel),
 		c.clientset,
 		defaultRetryBaseInterval,
 		defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error creating configmap for OBC %q: %v", obcNsName, err)
+		return fmt.Errorf("error creating configmap for OBC: %v", err)
 	}
 
 	// Create OB
@@ -358,10 +357,10 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	obc.Spec.ObjectBucketName = ob.Name
 	obc.Spec.BucketName = bucketName
 	if obc, err = updateClaim(c.libClientset, obc, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err)
+		return fmt.Errorf("error updating OBC: %v", err)
 	}
 	if obc, err = updateObjectBucketClaimPhase(c.libClientset, obc, v1alpha1.ObjectBucketClaimStatusPhaseBound, defaultRetryBaseInterval, defaultRetryTimeout); err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
+		return fmt.Errorf("error updating OBC status to %q: %v", v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
 	}
 
 	log.Info("provisioning succeeded")
