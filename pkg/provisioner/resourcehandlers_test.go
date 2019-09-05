@@ -140,7 +140,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 		host      = "http://www.test.com"
 		name      = "bucket-name"
 		port      = 11111
-		ssl       = true
 		region    = "region"
 		subRegion = "sub-region"
 	)
@@ -170,13 +169,11 @@ func TestNewBucketConfigMap(t *testing.T) {
 					BucketName: name,
 					Region:     region,
 					SubRegion:  subRegion,
-					SSL:        ssl,
 				},
 				obc: &v1alpha1.ObjectBucketClaim{
 					ObjectMeta: objMeta,
 					Spec: v1alpha1.ObjectBucketClaimSpec{
 						BucketName: name,
-						SSL:        ssl,
 					},
 				},
 			},
@@ -186,7 +183,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 					bucketName:      name,
 					bucketHost:      host,
 					bucketPort:      strconv.Itoa(port),
-					bucketSSL:       strconv.FormatBool(ssl),
 					bucketRegion:    region,
 					bucketSubRegion: subRegion,
 				},
@@ -202,13 +198,11 @@ func TestNewBucketConfigMap(t *testing.T) {
 					BucketName: name,
 					Region:     region,
 					SubRegion:  "",
-					SSL:        ssl,
 				},
 				obc: &v1alpha1.ObjectBucketClaim{
 					ObjectMeta: objMeta,
 					Spec: v1alpha1.ObjectBucketClaimSpec{
 						BucketName: name,
-						SSL:        ssl,
 					},
 				},
 			},
@@ -218,7 +212,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 					bucketName:      name,
 					bucketHost:      host,
 					bucketPort:      strconv.Itoa(port),
-					bucketSSL:       strconv.FormatBool(ssl),
 					bucketRegion:    region,
 					bucketSubRegion: "",
 				},
@@ -226,7 +219,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "with endpoint defined (non-SSL)",
+			name: "with endpoint defined",
 			args: args{
 				ep: &v1alpha1.Endpoint{
 					BucketHost: host,
@@ -234,13 +227,11 @@ func TestNewBucketConfigMap(t *testing.T) {
 					BucketName: name,
 					Region:     region,
 					SubRegion:  subRegion,
-					SSL:        !ssl,
 				},
 				obc: &v1alpha1.ObjectBucketClaim{
 					ObjectMeta: objMeta,
 					Spec: v1alpha1.ObjectBucketClaimSpec{
 						BucketName: name,
-						SSL:        !ssl,
 					},
 				},
 			},
@@ -250,7 +241,6 @@ func TestNewBucketConfigMap(t *testing.T) {
 					bucketName:      name,
 					bucketHost:      host,
 					bucketPort:      strconv.Itoa(port),
-					bucketSSL:       strconv.FormatBool(!ssl),
 					bucketRegion:    region,
 					bucketSubRegion: subRegion,
 				},

@@ -14,6 +14,5 @@ spec:
     bucketName: my-obc-1234-5678-1234-5678
     region: xxx
     subRegion: xxx
-    ssl: false
     additionalConfig: {}
   additionalState: {}

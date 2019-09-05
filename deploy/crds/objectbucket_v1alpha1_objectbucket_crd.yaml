@@ -96,9 +96,6 @@ spec:
                 subRegion:
                   description: Bucket sub-region
                   type: string
-                ssl:
-                  description: SSL whether connection to the bucket requires SSL Authentication or not
-                  type: boolean
                 additionalConfig:
                   description: AdditionalConfig gives providers a location to set
                     proprietary config values (tenant, namespace, etc)
@@ -125,12 +122,5 @@ spec:
                 - "bound"
                 - "released"
                 - "failed"
-              type: string
-            conditions:
-              description: ConditionsStatus
-              enum:
-                - "True"
-                - "False"
-                - "Unknown"
               type: string
           type: object

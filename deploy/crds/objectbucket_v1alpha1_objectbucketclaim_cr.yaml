@@ -6,6 +6,4 @@ metadata:
 spec:
   storageClassName: object-bucket-class
   generateBucketName: my-obc
-  SSL: false
-  versioned: false
   additionalConfig: {}
