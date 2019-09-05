@@ -132,7 +132,6 @@ type ObjectBucketStatus struct {
 	Conditions corev1.ConditionStatus  `json:"conditions"`
 }
 
-// ObjectBucket is the Schema for the objectbuckets API
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -143,6 +142,8 @@ type ObjectBucketStatus struct {
 // +kubebuilder:printcolumn:name="ReclaimPolicy",type="string",JSONPath=".spec.reclaimPolicy",description="ReclaimPolicy"
 // +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Phase"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+
+// ObjectBucket is the Schema for the objectbuckets API
 type ObjectBucket struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -151,8 +152,9 @@ type ObjectBucket struct {
 	Status ObjectBucketStatus `json:"status,omitempty"`
 }
 
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
 // ObjectBucketList contains a list of ObjectBucket
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object2
 type ObjectBucketList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
