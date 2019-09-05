@@ -86,7 +86,6 @@ type Endpoint struct {
 	BucketName           string            `json:"bucketName"`
 	Region               string            `json:"region"`
 	SubRegion            string            `json:"subRegion"`
-	SSL                  bool              `json:"ssl"`
 	AdditionalConfigData map[string]string `json:"additionalConfig"`
 }
 
@@ -129,7 +128,6 @@ const (
 // ObjectBucketStatus defines the observed state of ObjectBucket
 type ObjectBucketStatus struct {
 	Phase      ObjectBucketStatusPhase `json:"phase"`
-	Conditions corev1.ConditionStatus  `json:"conditions"`
 }
 
 // +genclient

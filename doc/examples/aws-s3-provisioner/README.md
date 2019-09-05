@@ -280,7 +280,6 @@ spec:
       bucketName: my-awesome-bucket [3]
       bucketPort: 443
       region: us-west-1
-      ssl: true
       subRegion: ""
   claimRef: null [4]
   reclaimPolicy: null
@@ -302,7 +301,6 @@ data:
   BUCKET_NAME: my-awesome-bucket [2]
   BUCKET_PORT: "443"
   BUCKET_REGION: us-west-1
-  BUCKET_SSL: "true"
   BUCKET_SUBREGION: ""
 kind: ConfigMap
 metadata:

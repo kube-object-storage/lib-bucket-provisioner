@@ -27,21 +27,6 @@ func ObjectBucketClaimGVK() schema.GroupVersionKind {
 	return GroupKindVersion(ObjectBucketClaimKind)
 }
 
-// BucketCannedACL strictly types pre-defined S3 bucket ACLs.  Provisioners are recommended to constrain these ACLs
-// scoped to the unique bucket that was created for the request. They are a subset of canned ACLs from AWS S3's
-// definitions of canned ACLs at https://docs.aws.amazon.com/AmazonS3/latest/dev/acl-overview.html#canned-acl
-type BucketCannedACL string
-
-const (
-	// BucketCannedACLPrivate owner gets FULL_CONTROL. No one else has access rights.
-	BucketCannedACLPrivate BucketCannedACL = "private"
-	// BucketCannedACLPublicRead owner gets FULL_CONTROL. All users in the store have read access
-	BucketCannedACLPublicRead BucketCannedACL = "public-read"
-	// BucketCannedACLPublicReadWrite Owner gets FULL_CONTROL. All users in the store get READ and WRITE access. Granting
-	// this on a bucket is generally not recommended.
-	BucketCannedACLPublicReadWrite BucketCannedACL = "public-read-write"
-)
-
 // ObjectBucketClaimSpec defines the desired state of ObjectBucketClaim
 type ObjectBucketClaimSpec struct {
 
@@ -59,23 +44,6 @@ type ObjectBucketClaimSpec struct {
 	// in-store name collisions.
 	// +optional
 	GenerateBucketName string `json:"generateBucketName,omitempty"`
-
-	// SSL whether connection to the bucket requires SSL Authentication or not
-	// +optional
-	SSL bool `json:"ssl,omitempty"`
-
-	// Generic predefined bucket ACLs for use by provisioners
-	// Available BucketCannedACLs are:
-	//    BucketCannedACLPrivate
-	//    BucketCannedACLPublicRead
-	//    BucketCannedACLPublicReadWrite
-	//    BucketCannedACLAuthenticatedRead
-	// +optional
-	BucketCannedACL BucketCannedACL `json:"cannedBucketAcl,omitempty"`
-
-	// Versioned determines if versioning is enabled
-	// +optional
-	Versioned bool `json:"versioned,omitempty"`
 
 	// AdditionalConfig gives providers a location to set
 	// proprietary config values (tenant, namespace, etc)

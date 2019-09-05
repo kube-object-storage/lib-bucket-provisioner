@@ -65,19 +65,6 @@ spec:
                 followed by a hyphen and 5 random characters. Protects against
                 in-store name collisions.
               type: string
-            ssl:
-              description: SSL whether connection to the bucket requires SSL Authentication or not
-              type: boolean
-            cannedBucketAcl:
-              description: Generic predefined bucket ACLs for use by provisioners
-              enum:
-                - "private"
-                - "public-read"
-                - "public-read-write"
-              type: string
-            versioned:
-              description: Versioned determines if versioning is enabled
-              type: boolean
             additionalConfig:
               description: AdditionalConfig gives providers a location to set
                 proprietary config values (tenant, namespace, etc)

@@ -221,7 +221,6 @@ func (p *gcsProvisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 			BucketPort: httpsPort,
 			BucketName: bktName,
 			Region:     p.region,
-			SSL:        true,
 		},
 		Authentication: &v1alpha1.Authentication{
 			AccessKeys: &v1alpha1.AccessKeys{

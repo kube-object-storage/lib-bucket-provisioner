@@ -247,7 +247,6 @@ spec:
       bucketName: screeley-bucket2 [2]
       bucketPort: 80
       region: us-east-1
-      ssl: false
       subRegion: ""
   claimRef: 81f43d26-75a8-11e9-9a08-0a416d87bfec [3]
   reclaimPolicy: Retain
@@ -269,7 +268,6 @@ data:
   BUCKET_NAME: my-awesome-bucket
   BUCKET_PORT: "80"
   BUCKET_REGION: us-east-1
-  BUCKET_SSL: "false"
   BUCKET_SUBREGION: ""
 kind: ConfigMap
 metadata:
