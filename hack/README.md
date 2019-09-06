@@ -54,8 +54,8 @@ metadata:
 
 9. create the CRs:
    ```
-   kubectl create -f https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/crds/objectbucket_v1alpha1_objectbucketclaim_crd.yaml
-   kubectl create -f https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/deploy/crds/objectbucket_v1alpha1_objectbucket_crd.yaml
+   kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucket_crd.yaml
+   kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucketclaim_crd.yaml
    ```
 
 10. edit s3-provisioner's OWNER secret yaml (_examples/greenfield/_):
