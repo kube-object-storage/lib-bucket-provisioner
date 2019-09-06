@@ -50,7 +50,7 @@ metadata:
 ---
 ```
    and create the namespace, roles and service accounts:
-   `kubectl create -f awss3provisioner-deployment.yaml`
+   `kubectl create -f examples/awss3provisioner-deployment.yaml`
 
 9. create the CRs:
    ```
@@ -70,7 +70,7 @@ metadata:
 11. create the storageclass (_examples/greenfield/_)
 12. create the obc (_examples/greenfield/_)
 13. finally, run the s3-provisioner:
-   `bin/awss3provisioner -alsologtostderr -v=2`
+   `bin/aws-s3-provisioner -alsologtostderr -v=2`
 14. [clean up](cleanup.sh) resources to test the next change.
 
 # TODO
