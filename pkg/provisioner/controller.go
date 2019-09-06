@@ -442,26 +442,24 @@ func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *c
 // is to remove the finalizer on the OBC so it too will be garbage collected.
 // Returns err if we can't delete one or more of the resources, the final returned error being
 // somewhat arbitrary.
-func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) { 
-	name := obc.Namespace + "/" + obc.Name
+func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) {
 
 	if delErr := deleteObjectBucket(ob, c.libClientset); delErr != nil {
 		log.Error(delErr, "error deleting objectBucket", ob.Name)
 		err = delErr
 	}
 	if delErr := releaseSecret(s, c.clientset); delErr != nil {
-		log.Error(delErr, "error releasing secret", name)
+		log.Error(delErr, "error releasing secret")
 		err = delErr
 	}
 	if delErr := releaseConfigMap(cm, c.clientset); delErr != nil {
-		log.Error(delErr, "error releasing configMap", name)
+		log.Error(delErr, "error releasing configMap")
 		err = delErr
 	}
 	if delErr := releaseOBC(obc, c.libClientset); delErr != nil {
-		log.Error(delErr, "error releasing obc", name)
+		log.Error(delErr, "error releasing obc")
 		err = delErr
 	}
-
 	return err
 }
 
