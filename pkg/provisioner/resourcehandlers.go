@@ -140,7 +140,8 @@ func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication
 		secret, err = c.CoreV1().Secrets(obc.Namespace).Create(secret)
 		if err != nil {
 			if errors.IsAlreadyExists(err) {
-				// The object already exists don't spam the logs, instead let the request be requeued
+				log.Error(err, "Secret already exists, requeueing",
+					"name", secret.Namespace+"/"+secret.Name)
 				return true, err
 			}
 			// The error could be intermittent, log and try again
@@ -163,7 +164,8 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, lab
 		configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(configMap)
 		if err != nil {
 			if errors.IsAlreadyExists(err) {
-				// The object already exists don't spam the logs, instead let the request be requeued
+				log.Error(err, "ConfigMap already exists, requeueing",
+					"name", configMap.Namespace+"/"+configMap.Name)
 				return true, err
 			}
 			// The error could be intermittent, log and try again
