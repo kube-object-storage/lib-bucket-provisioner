@@ -243,7 +243,9 @@ func releaseOBC(obc *v1alpha1.ObjectBucketClaim, c versioned.Interface) (err err
 // Uses Update() because Patch Strategies are not supported for CRDs
 // https://github.com/kubernetes/kubernetes/issues/50037
 func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error {
-	if ob == nil {
+	// skip if ob is nil or otherwise wasn't instantiated.
+	// note: the ob is returned by Provision and Grant, partially filled
+	if ob == nil || ob.ObjectMeta.UID == "" {
 		return nil
 	}
 
