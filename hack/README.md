@@ -27,7 +27,7 @@ Executes a `go build` of `./pkg/...`. Since there is no binary to produce, this 
 
 ###### `./hack/go.sh vet`
 
-Runs `go vet` all non-generated code under `./pkg/...`.  This is a workaround for known issues with generated Kubernetes code.
+Runs `go vet` against all non-generated code under `./pkg/...`.  This is a workaround for known issues with generated Kubernetes code.
 
 ###### `./hack/go.sh test`
 
@@ -47,7 +47,7 @@ Runs the pre-configured golangci-lint binary.
 
 ###### `./hack/go.sh linters`
 
-Lists the enabled and disabled linters that are run by golangci-lint
+Lists the enabled and disabled linters aggregated by golangci-lint.
 
 ###### `./hack/go.sh ci-checks`
 
