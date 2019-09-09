@@ -10,6 +10,16 @@ Then install the dependencies
 
 ## Build Scripts
 
+### golangci-lint
+
+Linting and vetting are handled with [golangci-lint](https://github.com/golangci/golangci-lint), which must be installed prior to executing 
+the respective operations with `./hack/go.sh`.
+
+Developers should use golangci-lint version v1.16.0.  Installation instructions recommend against managing this
+dependency through dep.
+
+Download the golangci-lint v1.16.0 binary from the [releases](https://github.com/golangci/golangci-lint/releases/tag/v1.16.0) or follow the [installation instructions](https://github.com/golangci/golangci-lint#local-installation) for your OS.
+
 Some basic developer workflows are wrapped up in the [./hack/go.sh](./go.sh) script.  Because of certain quirks with Kubernetes' generated code,
 it's **highly recommended** that script be used instead of the common golang workflows (build, test, vet, etc.).  The script is written
 with these quirks in mind and prevents the false-negatives that occur otherwise.
