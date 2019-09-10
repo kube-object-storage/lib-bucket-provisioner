@@ -249,7 +249,6 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		secret    *corev1.Secret
 		configMap *corev1.ConfigMap
 	)
-	obcNsName := obc.Namespace + "/" + obc.Name
 
 	// first step is to update the OBC's status to pending
 	obc, err = updateObjectBucketClaimPhase(
@@ -259,7 +258,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		defaultRetryBaseInterval,
 		defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhasePending, err)
+		return fmt.Errorf("error updating OBC status to %q: %v", v1alpha1.ObjectBucketClaimStatusPhasePending, err)
 	}
 
 	// set finalizer in OBC so that resources can be cleaned up when the obc is deleted
@@ -340,7 +339,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		defaultRetryBaseInterval,
 		defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("error creating secret for OBC %q: %v", obcNsName, err)
+		return fmt.Errorf("error creating secret for OBC: %v", err)
 	}
 	configMap, err = createConfigMap(
 		obc,
@@ -350,7 +349,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		defaultRetryBaseInterval,
 		defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("error creating configmap for OBC %q: %v", obcNsName, err)
+		return fmt.Errorf("error creating configmap for OBC: %v", err)
 	}
 
 	// Create OB
@@ -378,7 +377,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		defaultRetryBaseInterval,
 		defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("error updating OB %q's status to %q:", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
+		return fmt.Errorf("error updating OB %q's status to %q: %v", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
 	}
 
 	// update OBC
@@ -390,7 +389,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		defaultRetryBaseInterval,
 		defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("error updating OBC %q: %v", obcNsName, err)
+		return fmt.Errorf("error updating OBC: %v", err)
 	}
 	obc, err = updateObjectBucketClaimPhase(
 		c.libClientset,
@@ -399,7 +398,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 		defaultRetryBaseInterval,
 		defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("error updating OBC %q's status to %q: %v", obcNsName, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
+		return fmt.Errorf("error updating OBC %q's status to: %v", v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
 	}
 
 	log.Info("provisioning succeeded")
