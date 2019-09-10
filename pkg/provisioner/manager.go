@@ -18,7 +18,7 @@ package provisioner
 
 import (
 	"flag"
-
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
@@ -37,7 +37,6 @@ type Provisioner struct {
 	Provisioner     api.Provisioner
 	claimController controller
 	informerFactory informers.SharedInformerFactory
-	// TODO context?
 }
 
 func initLoggers() {
@@ -90,6 +89,23 @@ func NewProvisioner(
 	}
 
 	return p, nil
+}
+
+// SetLabels allows provisioner author to provide their own resource labels.  They will be set on all
+// managed resources by the provisioner (OBC, OB, CM, Secret)
+func (p *Provisioner) SetLabels(labels map[string]string) []string {
+	var errs []string
+	for _, v := range labels {
+		vErrs := validation.IsValidLabelValue(v)
+		if len(errs) > 0 {
+			errs = append(errs, vErrs...)
+		}
+	}
+	if len(errs) > 0 {
+		return errs
+	}
+	p.claimController.SetLabels(labels)
+	return nil
 }
 
 // Run starts the claim and bucket controllers.
