@@ -29,15 +29,12 @@ import (
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
 )
 
-// Controller is the first iteration of our internal provisioning
-// Controller.  The passed-in bucket provisioner, coded by the user of the
-// library, is stored for later Provision and Delete calls.
+// Provisioner wraps a custom controller which watches OBCs and manages OB, CMs, and Secrets.
 type Provisioner struct {
 	Name            string
 	Provisioner     api.Provisioner
 	claimController controller
 	informerFactory informers.SharedInformerFactory
-	// TODO context?
 }
 
 func initLoggers() {
@@ -62,7 +59,7 @@ func initFlags() {
 }
 
 // NewProvisioner should be called by importers of this library to
-// instantiate a new provisioning Controller. This Controller will
+// instantiate a new provisioning obcController. This obcController will
 // respond to Add / Update / Delete events by calling the passed-in
 // provisioner's Provisioner and Delete methods.
 // The Provisioner will be restrict to operating only to the namespace given
@@ -84,7 +81,7 @@ func NewProvisioner(
 	p := &Provisioner{
 		Name:            provisionerName,
 		informerFactory: informerFactory,
-		claimController: NewController(provisionerName, provisioner, clientset, libClientset,
+		claimController: newController(provisionerName, provisioner, clientset, libClientset,
 			informerFactory.Objectbucket().V1alpha1().ObjectBucketClaims(),
 			informerFactory.Objectbucket().V1alpha1().ObjectBuckets()),
 	}
