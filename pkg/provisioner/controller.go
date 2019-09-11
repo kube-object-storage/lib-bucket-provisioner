@@ -43,7 +43,8 @@ type controller interface {
 	SetLabels(map[string]string)
 }
 
-// Provisioner is a CRD Controller responsible for executing the Reconcile() function in response to OB and OBC events.
+// Provisioner is a CRD Controller responsible for executing the Reconcile() function
+// in response to OBC events.
 type Controller struct {
 	clientset    kubernetes.Interface
 	libClientset versioned.Interface
@@ -53,9 +54,8 @@ type Controller struct {
 	obcHasSynced cache.InformerSynced
 	obHasSynced  cache.InformerSynced
 	queue        workqueue.RateLimitingInterface
-
+	// optional provisioner-specific labels added to OB, OBC, configmap and secret
 	provisionerLabels map[string]string
-
 	provisioner     api.Provisioner
 	provisionerName string
 }
@@ -521,7 +521,7 @@ func (c *Controller) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err erro
 	logD.Info("getting OBC to set metadata fields")
 	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(obc.Name, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("error getting unconfigured obc: %v", err)
+		return fmt.Errorf("error getting obc: %v", err)
 	}
 
 	obc.SetFinalizers([]string{finalizer})
