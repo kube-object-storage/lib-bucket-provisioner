@@ -63,7 +63,7 @@ type obcController struct {
 
 var _ controller = &obcController{}
 
-func newController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *obcController {
+func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *obcController {
 	ctrl := &obcController{
 		clientset:       clientset,
 		libClientset:    crdClientSet,
@@ -103,16 +103,6 @@ func newController(provisionerName string, provisioner api.Provisioner, clientse
 		},
 	})
 	return ctrl
-}
-
-func (c *obcController) enqueueOBC(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		utilruntime.HandleError(err)
-		return
-	}
-	c.queue.AddRateLimited(key)
 }
 
 func (c *obcController) Start(stopCh <-chan struct{}) error {
@@ -371,9 +361,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 	ob.SetFinalizers([]string{finalizer})
-	ob.
-  
-  (c.provisionerLabels)
+	ob.SetLabels(c.provisionerLabels)
 
 	ob, err = createObjectBucket(
 		ob,
