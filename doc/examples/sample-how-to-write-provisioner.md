@@ -243,9 +243,9 @@ func (p *gcsProvisioner) rtnObjectBkt(bktName string) *v1alpha1.ObjectBucket {
 ```
 ### Sample Code
 Take a look at some existing provisioners to get an idea of how these interfaces are implemented and you can
-most likely use these a template to get started, updating where it is appropriate.
-[AWS-S3-Provisioner](https://github.com/kube-object-storage/aws-s3-provisioner)
-[Rook-Ceph Provisioner](TBD)
+most likely use these a template to get started, updating where it is appropriate:
+[AWS-S3-Provisioner](aws-s3-provisioner),
+[Rook-Ceph Provisioner](ceph-rgw-provisioner)
 ### Dependency Management
 The Bucket Library uses `client-go v1.11` and `Kubernete v1.14`. If your project uses different versions
 of these packages, there may be dependency resolution issues.
