@@ -100,19 +100,6 @@ func isNewBucketByObjectBucket(c kubernetes.Interface, ob *v1alpha1.ObjectBucket
 	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
 }
 
-func (c *Controller) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
-	logD.Info("getting objectBucket for key", "key", key)
-	name, err := objectBucketNameFromClaimKey(key)
-	if err != nil {
-		return nil, err
-	}
-	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("error getting object bucket %q: %v", name, err)
-	}
-	return ob, nil
-}
-
 func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap, error) {
 	logD.Info("getting configMap for key", "key", key)
 	ns, name, err := cache.SplitMetaNamespaceKey(key)

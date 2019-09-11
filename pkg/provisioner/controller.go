@@ -43,9 +43,10 @@ type controller interface {
 	SetLabels(map[string]string)
 }
 
+
 // Provisioner is a CRD Controller responsible for executing the Reconcile() function
 // in response to OBC events.
-type Controller struct {
+type obcController struct {
 	clientset    kubernetes.Interface
 	libClientset versioned.Interface
 	obcLister    listers.ObjectBucketClaimLister
@@ -60,10 +61,10 @@ type Controller struct {
 	provisionerName string
 }
 
-var _ controller = &Controller{}
+var _ controller = &obcController{}
 
-func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *Controller {
-	ctrl := &Controller{
+func newController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *obcController {
+	ctrl := &obcController{
 		clientset:       clientset,
 		libClientset:    crdClientSet,
 		obcLister:       obcInformer.Lister(),
@@ -104,7 +105,17 @@ func NewController(provisionerName string, provisioner api.Provisioner, clientse
 	return ctrl
 }
 
-func (c *Controller) Start(stopCh <-chan struct{}) error {
+func (c *obcController) enqueueOBC(obj interface{}) {
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	c.queue.AddRateLimited(key)
+}
+
+func (c *obcController) Start(stopCh <-chan struct{}) error {
 	defer utilruntime.HandleCrash()
 	defer c.queue.ShutDown()
 
@@ -117,11 +128,11 @@ func (c *Controller) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
-func (c *Controller) SetLabels(labels map[string]string) {
+func (c *obcController) SetLabels(labels map[string]string) {
 	c.provisionerLabels = labels
 }
 
-func (c *Controller) enqueueOBC(obj interface{}) {
+func (c *obcController) enqueueOBC(obj interface{}) {
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -131,12 +142,12 @@ func (c *Controller) enqueueOBC(obj interface{}) {
 	c.queue.AddRateLimited(key)
 }
 
-func (c *Controller) runWorker() {
+func (c *obcController) runWorker() {
 	for c.processNextItemInQueue() {
 	}
 }
 
-func (c *Controller) processNextItemInQueue() bool {
+func (c *obcController) processNextItemInQueue() bool {
 	obj, shutdown := c.queue.Get()
 	if shutdown {
 		return false
@@ -186,11 +197,11 @@ func (c *Controller) processNextItemInQueue() bool {
 }
 
 // Reconcile implements the Reconciler interface. This function contains the business logic
-// of the OBC Controller.
+// of the OBC obcController.
 // Note: the obc obtained from the key is not expected to be nil. In other words, this func is
 //   not called when informers detect an object is missing and trigger a formal delete event.
 //   Instead, delete is indicated by the deletionTimestamp being non-nil on an update event.
-func (c *Controller) syncHandler(key string) error {
+func (c *obcController) syncHandler(key string) error {
 
 	setLoggersWithRequest(key)
 	logD.Info("new Reconcile iteration")
@@ -242,7 +253,7 @@ func (c *Controller) syncHandler(key string) error {
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) (err error) {
+func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) (err error) {
 
 	var (
 		ob        *v1alpha1.ObjectBucket
@@ -360,7 +371,9 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 	ob.SetFinalizers([]string{finalizer})
-	ob.SetLabels(c.provisionerLabels)
+	ob.
+  
+  (c.provisionerLabels)
 
 	ob, err = createObjectBucket(
 		ob,
@@ -407,7 +420,7 @@ func (c *Controller) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucket
 
 // Delete or Revoke access to bucket defined by passed-in key and obc.
 // TODO each delete should retry a few times to mitigate intermittent errors
-func (c *Controller) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
+func (c *obcController) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
 	// Call `Delete` for new (greenfield) buckets with reclaimPolicy == "Delete".
 	// Call `Revoke` for new buckets with reclaimPolicy != "Delete".
 	// Call `Revoke` for existing (brownfield) buckets regardless of reclaimPolicy.
@@ -450,13 +463,13 @@ func (c *Controller) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketCla
 	return c.deleteResources(ob, cm, secret, obc)
 }
 
-func (c *Controller) supportedProvisioner(provisioner string) bool {
+func (c *obcController) supportedProvisioner(provisioner string) bool {
 	return provisioner == c.provisionerName
 }
 
 // Returns the ob, configmap, and secret based on the passed-in key. Only returns non-nil
 // error if unable to get all resources. Some resources may be nil.
-func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, error) {
+func (c *obcController) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, error) {
 
 	ob, obErr := c.objectBucketForClaimKey(key)
 	if errors.IsNotFound(obErr) {
@@ -491,7 +504,7 @@ func (c *Controller) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *c
 // is to remove the finalizer on the OBC so it too will be garbage collected.
 // Returns err if we can't delete one or more of the resources, the final returned error being
 // somewhat arbitrary.
-func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) {
+func (c *obcController) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, s *corev1.Secret, obc *v1alpha1.ObjectBucketClaim) (err error) {
 
 	if delErr := deleteObjectBucket(ob, c.libClientset); delErr != nil {
 		log.Error(delErr, "error deleting objectBucket", ob.Name)
@@ -512,10 +525,8 @@ func (c *Controller) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.Confi
 	return err
 }
 
-// Add a finalizer to the OBC so that resource deletion can be orchestrated.
-// Add custom labels to the OBC.
-func (c *Controller) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err error) {
-
+// Add finalizer and labels to the OBC.
+func (c *obcController) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err error) {
 	clib := c.libClientset
 
 	logD.Info("getting OBC to set metadata fields")
@@ -534,4 +545,17 @@ func (c *Controller) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err erro
 	}
 
 	return nil
+}
+
+func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
+	logD.Info("getting objectBucket for key", "key", key)
+	name, err := objectBucketNameFromClaimKey(key)
+	if err != nil {
+		return nil, err
+	}
+	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting object bucket %q: %v", name, err)
+	}
+	return ob, nil
 }
