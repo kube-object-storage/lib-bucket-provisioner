@@ -18,7 +18,8 @@ package provisioner
 
 import (
 	"flag"
-
+	"time"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
@@ -76,17 +77,39 @@ func NewProvisioner(
 	libClientset := versioned.NewForConfigOrDie(cfg)
 	clientset := kubernetes.NewForConfigOrDie(cfg)
 
-	informerFactory := informers.NewSharedInformerFactory(libClientset, 0)
+	informerFactory := setupInformerFactory(libClientset, 0, namespace)
 
 	p := &Provisioner{
 		Name:            provisionerName,
 		informerFactory: informerFactory,
-		claimController: newController(provisionerName, provisioner, clientset, libClientset,
+
+		claimController: newController(
+			provisionerName,
+			provisioner,
+			clientset,
+			libClientset,
 			informerFactory.Objectbucket().V1alpha1().ObjectBucketClaims(),
 			informerFactory.Objectbucket().V1alpha1().ObjectBuckets()),
 	}
 
 	return p, nil
+}
+
+// SetLabels allows provisioner author to provide their own resource labels.  They will be set on all
+// managed resources by the provisioner (OBC, OB, CM, Secret)
+func (p *Provisioner) SetLabels(labels map[string]string) []string {
+	var errs []string
+	for _, v := range labels {
+		vErrs := validation.IsValidLabelValue(v)
+		if len(errs) > 0 {
+			errs = append(errs, vErrs...)
+		}
+	}
+	if len(errs) > 0 {
+		return errs
+	}
+	p.claimController.SetLabels(labels)
+	return nil
 }
 
 // Run starts the claim and bucket controllers.
@@ -101,4 +124,17 @@ func (p *Provisioner) Run(stopCh <-chan struct{}) (err error) {
 	}()
 	<-stopCh
 	return
+}
+
+// setupInformerFactory generates an informer factory scoped to the given namespace if provided or
+// to the cluster if empty.
+func setupInformerFactory(c versioned.Interface, resyncPeriod time.Duration, ns string) (inf informers.SharedInformerFactory) {
+	if len(ns) > 0 {
+		return informers.NewSharedInformerFactoryWithOptions(
+			c,
+			resyncPeriod,
+			informers.WithNamespace(ns),
+		)
+	}
+	return informers.NewSharedInformerFactory(c, resyncPeriod)
 }
