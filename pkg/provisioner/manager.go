@@ -83,7 +83,7 @@ func NewProvisioner(
 		Name:            provisionerName,
 		informerFactory: informerFactory,
 
-		claimController: newController(
+		claimController: NewController(
 			provisionerName,
 			provisioner,
 			clientset,
