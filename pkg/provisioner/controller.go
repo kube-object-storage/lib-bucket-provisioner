@@ -231,6 +231,18 @@ func (c *obcController) syncHandler(key string) error {
 		log.Info("skipping provision")
 		return nil
 	}
+
+	// update the OBC's status to pending before any provisioning related errors can occur
+	obc, err = updateObjectBucketClaimPhase(
+		c.libClientset,
+		obc,
+		v1alpha1.ObjectBucketClaimStatusPhasePending,
+		defaultRetryBaseInterval,
+		defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error updating OBC status:", err)
+	}
+
 	class, err := storageClassForClaim(c.clientset, obc)
 	if err != nil {
 		return err
@@ -257,18 +269,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		configMap *corev1.ConfigMap
 	)
 
-	// first step is to update the OBC's status to pending
-	obc, err = updateObjectBucketClaimPhase(
-		c.libClientset,
-		obc,
-		v1alpha1.ObjectBucketClaimStatusPhasePending,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("error updating OBC status to %q: %v", v1alpha1.ObjectBucketClaimStatusPhasePending, err)
-	}
-
-	// set finalizer in OBC so that resources can be cleaned up when the obc is deleted
+	// set finalizer in OBC so that resources cleaned up is controlled when the obc is deleted
 	if err = c.setOBCMetaFields(obc); err != nil {
 		return err
 	}
