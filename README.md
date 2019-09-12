@@ -11,7 +11,7 @@ There are [examples](https://github.com/kube-object-storage/lib-bucket-provision
 
 Library contributors should look [here](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/hack/README.md) for `make` and directions.
 
-Provisioner Developers should look [here](https://github.com/kube-object-storage/lib-bucket-provisioner/blob/master/doc/examples/sample-how-to-write-provisioner.md) for some guidance/recommendations/tips on how to get started with creating your own Provisioner. 
+Provisioner developers should look [here](doc/examples/sample-how-to-write-provisioner.md) and [here](doc/design/object-bucket-lib.md#touch-points) for some guidance/recommendations/tips on how to get started with creating your own Provisioner. 
 
 
 ### Feedback and Community Input
