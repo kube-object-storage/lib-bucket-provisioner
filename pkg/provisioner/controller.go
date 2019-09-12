@@ -43,7 +43,6 @@ type controller interface {
 	SetLabels(map[string]string)
 }
 
-
 // Provisioner is a CRD Controller responsible for executing the Reconcile() function
 // in response to OBC events.
 type obcController struct {
@@ -55,24 +54,28 @@ type obcController struct {
 	obcHasSynced cache.InformerSynced
 	obHasSynced  cache.InformerSynced
 	queue        workqueue.RateLimitingInterface
-	// optional provisioner-specific labels added to OB, OBC, configmap and secret
+	// static label containing provisioner name and provisioner-specific labels which are all added
+	// to the OB, OBC, configmap and secret
 	provisionerLabels map[string]string
-	provisioner     api.Provisioner
-	provisionerName string
+	provisioner       api.Provisioner
+	provisionerName   string
 }
 
 var _ controller = &obcController{}
 
 func NewController(provisionerName string, provisioner api.Provisioner, clientset kubernetes.Interface, crdClientSet versioned.Interface, obcInformer informers.ObjectBucketClaimInformer, obInformer informers.ObjectBucketInformer) *obcController {
 	ctrl := &obcController{
-		clientset:       clientset,
-		libClientset:    crdClientSet,
-		obcLister:       obcInformer.Lister(),
-		obLister:        obInformer.Lister(),
-		obcInformer:     obcInformer,
-		obcHasSynced:    obcInformer.Informer().HasSynced,
-		obHasSynced:     obInformer.Informer().HasSynced,
-		queue:           workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		clientset:    clientset,
+		libClientset: crdClientSet,
+		obcLister:    obcInformer.Lister(),
+		obLister:     obInformer.Lister(),
+		obcInformer:  obcInformer,
+		obcHasSynced: obcInformer.Informer().HasSynced,
+		obHasSynced:  obInformer.Informer().HasSynced,
+		queue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		provisionerLabels: map[string]string{
+			provisionerLabelKey: labelValue(provisionerName),
+		},
 		provisionerName: provisionerName,
 		provisioner:     provisioner,
 	}
@@ -118,8 +121,11 @@ func (c *obcController) Start(stopCh <-chan struct{}) error {
 	return nil
 }
 
+// add provisioner-specific labels to the existing static label in the obcController struct.
 func (c *obcController) SetLabels(labels map[string]string) {
-	c.provisionerLabels = labels
+	for k, v := range labels {
+		c.provisionerLabels[k] = v
+	}
 }
 
 func (c *obcController) enqueueOBC(obj interface{}) {

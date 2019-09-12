@@ -18,12 +18,14 @@ package provisioner
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 
@@ -210,4 +212,16 @@ func removeFinalizer(obj metav1.Object) {
 			break
 		}
 	}
+}
+
+// replace illegal label value characters with "-".
+// Note: the only substitution is replacing "/" with "-". This needs improvement.
+func labelValue(v string) string {
+	if errs := validation.IsValidLabelValue(v); len(errs) == 0 {
+		return v
+	}
+	if len(v) > validation.LabelValueMaxLength {
+		v = v[0:validation.LabelValueMaxLength]
+	}
+	return strings.Replace(v, "/", "-", -1)
 }
