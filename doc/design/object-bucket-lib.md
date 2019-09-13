@@ -452,9 +452,12 @@ In this case the OBC does not contain the bucket name.
 Provisioners are expected to create artifacts such as user, policies, credentials, etc., but not to create a new bucket.
 Provisioners return a skeleton OB structure.
 
-- **`Delete`** is a method called by the library when an OBC is deleted and its storage class does not contain the bucket name, meaning a "greenfield" provisioning had occurred.
-Provisioners are expected to delete, remove, archive, etc the bucket and related artifacts.
-
-- **`Revoke`** is a method called by the library when an OBC is deleted and its storage class contains the bucket name, meaning a "brownfield" provisioning had occurred.
+- **`Delete`** is a method called by the library when an OBC is deleted, and its storage class does not contain the bucket name (meaning "greenfield" provisioning had occurred), and the storage class's `reclaimPolicy` is "Delete".
 Provisioners are expected to remove the bucket and related artifacts.
+
+- **`Revoke`** is a method called by the library when an OBC is deleted and one of the following situations exists:
+  - the OBC's storage class contains the bucket name, meaning "brownfield" provisioning had occurred.
+  In this case the storage class's `reclaimPolicy` is ignored
+  - "greenfield" provisioning occurred and the storage class's `reclaimPolicy` is "Retain".
+Provisioners are expected to retain the bucket but delete the related artifacts.
 
