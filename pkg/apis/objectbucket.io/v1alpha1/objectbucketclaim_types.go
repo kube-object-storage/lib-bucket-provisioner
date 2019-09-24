@@ -61,16 +61,16 @@ type ObjectBucketClaimStatusPhase string
 const (
 	// ObjectBucketClaimStatusPhasePending indicates that the provisioner has begun handling the request and that it is
 	// still in process
-	ObjectBucketClaimStatusPhasePending = "pending"
+	ObjectBucketClaimStatusPhasePending = "Pending"
 	// ObjectBucketClaimStatusPhaseBound indicates that provisioning has succeeded, the objectBucket is marked bound, and
 	// there is now a configMap and secret containing the appropriate bucket data in the namespace of the claim
-	ObjectBucketClaimStatusPhaseBound = "bound"
+	ObjectBucketClaimStatusPhaseBound = "Bound"
 	// ObjectBucketClaimStatusPhaseReleased TODO this would likely mean that the OB was deleted. That situation should never
 	// happen outside of the claim being deleted.  So this state shouldn't naturally arise out of automation.
-	ObjectBucketClaimStatusPhaseReleased = "released"
+	ObjectBucketClaimStatusPhaseReleased = "Released"
 	// ObjectBucketClaimStatusPhaseFailed indicates that provisioning failed.  There should be no configMap, secret, or
 	// object bucket and no bucket should be left hanging in the object store
-	ObjectBucketClaimStatusPhaseFailed = "failed"
+	ObjectBucketClaimStatusPhaseFailed = "Failed"
 )
 
 // ObjectBucketClaimStatus defines the observed state of ObjectBucketClaim

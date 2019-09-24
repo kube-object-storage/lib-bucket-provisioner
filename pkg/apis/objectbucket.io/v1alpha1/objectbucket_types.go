@@ -114,15 +114,15 @@ const (
 	// ObjectBucketStatusPhaseBound indicates that the objectBucket has been logically bound to a claim following a
 	// successful provision.  It is NOT the authority for the status of the claim an object bucket. For that, see
 	// objectBucketClaim.Spec.ObjectBucketName
-	ObjectBucketStatusPhaseBound ObjectBucketStatusPhase = "bound"
+	ObjectBucketStatusPhaseBound ObjectBucketStatusPhase = "Bound"
 	// ObjectBucketStatusPhaseReleased indicates that the object bucket was once bound to a claim that has since been deleted
 	// this phase can occur when the claim is deleted and the reconciler is in the process of either deleting the bucket or
 	// revoking access to that bucket in the case of brownfield.
-	ObjectBucketStatusPhaseReleased ObjectBucketStatusPhase = "released"
+	ObjectBucketStatusPhaseReleased ObjectBucketStatusPhase = "Released"
 	// ObjectBucketStatusPhaseFailed TODO this phase does not have a defined reason for existing.  If provisioning fails
 	//  the OB is cleaned up.  Since we generate OBs for brownfield cases, we also would delete them on failures.  The
 	//  result is that if this phase is set, the OB would deleted soon after anyway.
-	ObjectBucketStatusPhaseFailed ObjectBucketStatusPhase = "failed"
+	ObjectBucketStatusPhaseFailed ObjectBucketStatusPhase = "Failed"
 )
 
 // ObjectBucketStatus defines the observed state of ObjectBucket
