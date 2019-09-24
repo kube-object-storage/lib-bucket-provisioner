@@ -80,9 +80,9 @@ spec:
             phase:
               description: ObjectBucketClaimStatusPhase is set by the controller to save the state of the provisioning process
               enum:
-                - "pending"
-                - "bound"
-                - "released"
-                - "failed"
+                - "Pending"
+                - "Bound"
+                - "Released"
+                - "Failed"
               type: string
           type: object

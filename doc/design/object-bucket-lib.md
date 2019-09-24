@@ -216,7 +216,7 @@ spec:
   configMapRef: objectReference{} [6]
   secretRef: objectReference{} [7]
 status:
-  phase: {"pending", "bound", "released", "failed"} [8]
+  phase: {"Pending", "Bound", "Released", "Failed"} [8]
 ```
 1. the finalizer added by the library, the name is a constant.
 1. the library adds a label (seen here) but each provisioner can
@@ -229,10 +229,10 @@ status:
 1. objectReference to the generated ConfigMap.
 1. objectReference to the generated Secret.
 1. phases of bucket creation:
-    - _pending_: the operator is processing the request
-    - _bound_: the operator finished processing the request and linked the OBC and OB
-    - _released_: the OB has been deleted, leaving the OBC unclaimed but unavailable.
-    - _failed_: not currently set.
+    - _Pending_: the operator is processing the request
+    - _Bound_: the operator finished processing the request and linked the OBC and OB
+    - _Released_: the OB has been deleted, leaving the OBC unclaimed but unavailable.
+    - _Failed_: not currently set.
 
 ### Generated Secret (sample for rook-ceph provider)
 ```yaml
@@ -344,7 +344,7 @@ spec:
   claimRef: objectreference [7]
   reclaimPolicy: {"Delete", "Retain"} [8]
 status:
-  phase: {"pending", "bound", "released", "failed"} [9]
+  phase: {"Pending", "Bound", "Released", "Failed"} [9]
 ```
 1. name consists of the OBC's namespace + "-" + the OBC's metadata.Name (must be unique).
 1. finalizers set and cleared by the lib's OBC controller. Prevents accidental deletion of an OB.
@@ -356,10 +356,10 @@ status:
 1. objectReference to the associated OBC.
 1. reclaim policy from the Storge Class referenced in the OBC.
 1. phase is the current state of the ObjectBucket:
-    - _pending_: the operator is processing the request
-    - _bound_: the operator finished processing the request and linked the OBC and OB
-    - _released_: the OBC has been deleted, leaving the OB unclaimed.
-    - _failed_: not currently set.
+    - _Pending_: the operator is processing the request
+    - _Bound_: the operator finished processing the request and linked the OBC and OB
+    - _Released_: the OBC has been deleted, leaving the OB unclaimed.
+    - _Failed_: not currently set.
 
 ### StorageClass (sample for an S3 provider)
 ```yaml

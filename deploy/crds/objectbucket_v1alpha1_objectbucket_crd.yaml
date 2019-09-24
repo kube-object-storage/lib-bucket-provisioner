@@ -119,8 +119,8 @@ spec:
               description: ObjectBucketStatusPhase is set by the controller to save the 
                 state of the provisioning process
               enum:
-                - "bound"
-                - "released"
-                - "failed"
+                - "Bound"
+                - "Released"
+                - "Failed"
               type: string
           type: object
