@@ -37,7 +37,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 		authSecret   = "test-auth-secret"
 	)
 
-	var T = true
+	var isTrue = true
 	dummyLabels := map[string]string{"dummy": "label"}
 	testObjectMeta := metav1.ObjectMeta{
 		Name:       obcName,
@@ -50,8 +50,8 @@ func TestNewCredentialsSecret(t *testing.T) {
 				Kind:               "ObjectBucketClaim",
 				Name:               obcName,
 				UID:                "",
-				Controller:         &T,
-				BlockOwnerDeletion: &T,
+				Controller:         &isTrue,
+				BlockOwnerDeletion: &isTrue,
 			},
 		},
 	}
@@ -155,7 +155,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 		region    = "region"
 		subRegion = "sub-region"
 	)
-	var T = true
+	var isTrue = true
 
 	dummyLabels := map[string]string{"dummy": "label"}
 	objMeta := metav1.ObjectMeta{
@@ -169,8 +169,8 @@ func TestNewBucketConfigMap(t *testing.T) {
 				Kind:               "ObjectBucketClaim",
 				Name:               obcName,
 				UID:                "",
-				Controller:         &T,
-				BlockOwnerDeletion: &T,
+				Controller:         &isTrue,
+				BlockOwnerDeletion: &isTrue,
 			},
 		},
 	}
