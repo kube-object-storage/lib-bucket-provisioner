@@ -240,7 +240,7 @@ func (c *obcController) syncHandler(key string) error {
 		defaultRetryBaseInterval,
 		defaultRetryTimeout)
 	if err != nil {
-		return fmt.Errorf("error updating OBC status:", err)
+		return fmt.Errorf("error updating OBC status: %s", err)
 	}
 
 	class, err := storageClassForClaim(c.clientset, obc)

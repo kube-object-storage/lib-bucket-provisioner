@@ -38,11 +38,12 @@ func TestNewCredentialsSecret(t *testing.T) {
 	)
 
 	var T = true
-
+	dummyLabels := map[string]string{"dummy": "label"}
 	testObjectMeta := metav1.ObjectMeta{
 		Name:       obcName,
 		Namespace:  obcNamespace,
 		Finalizers: []string{finalizer},
+		Labels:     dummyLabels,
 		OwnerReferences: []metav1.OwnerReference{
 			{
 				APIVersion:         "objectbucket.io/v1alpha1",
@@ -132,7 +133,7 @@ func TestNewCredentialsSecret(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := newCredentialsSecret(tt.args.obc, tt.args.authentication)
+			got, err := newCredentialsSecret(tt.args.obc, tt.args.authentication, dummyLabels)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewCredentailsSecret() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -156,11 +157,12 @@ func TestNewBucketConfigMap(t *testing.T) {
 	)
 	var T = true
 
+	dummyLabels := map[string]string{"dummy": "label"}
 	objMeta := metav1.ObjectMeta{
 		Name:       "test-obc",
 		Namespace:  "test-obc-namespace",
 		Finalizers: []string{finalizer},
-		Labels:     nil,
+		Labels:     dummyLabels,
 		OwnerReferences: []metav1.OwnerReference{
 			{
 				APIVersion:         "objectbucket.io/v1alpha1",
@@ -273,8 +275,7 @@ func TestNewBucketConfigMap(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			got, err := newBucketConfigMap(tt.args.ep, tt.args.obc)
+			got, err := newBucketConfigMap(tt.args.obc, tt.args.ep, dummyLabels)
 			if (err != nil) == !tt.wantErr {
 				t.Errorf("newBucketConfigMap() error = %v, wantErr %v", err, tt.wantErr)
 			} else if !cmp.Equal(tt.want, got) {
