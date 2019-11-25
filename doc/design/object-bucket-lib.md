@@ -331,32 +331,36 @@ spec:
 ```yaml
 apiVersion: objectbucket.io/v1alpha1
 kind: ObjectBucket
-metadata:
-  name: OBC-NAMESPACE-MY-BUCKET-1 [1]
-  finalizers: [2]
-  - objectbucket.io/finalizer
-  labels: [3]
-    bucket-provisioner: aws-s3.io-bucket [4]
+Metadata:
+  name: obc-my-ns-my-bucket [1]
+  labels:
+    bucket-provisioner: AN-OBJECT-STORE-STORAGE-CLASS [2]
+  finalizers:
+  - "objectbucket.io/finalizer" [3]
 spec:
-  objectBucketSource: [5]
-    provider: ceph.rook.io/object
-  storageClassName: OBCs-SC-NAME [6]
-  claimRef: objectreference [7]
-  reclaimPolicy: {"Delete", "Retain"} [8]
+  storageClassName: example-obj-prov [4]
+  claimRef: *v1.objectreference [5]
+  reclaimPolicy: {"Delete", "Retain"} [6]
+  endpoint:
+    bucketHost: foo.bar.com
+    bucketPort: 8080
+    bucketName: my-photos-1xj4a
+    region: # provisioner dependent
+    subRegion: # provisioner dependent
+    additionalConfigData: [] #string:string
+  additionalState: [] #string:string
 status:
-  phase: {"Pending", "Bound", "Released", "Failed"} [9]
+  phase: {"Bound", "Released", "Failed"} [7]
+
 ```
-1. name consists of the OBC's namespace + "-" + the OBC's metadata.Name (must be unique).
-1. finalizers set and cleared by the lib's OBC controller. Prevents accidental deletion of an OB.
-1. the library adds a label (seen here) but each provisioner can supply their own labels.
+1. name is constructed in the pattern: obc-OBC_NAMESPACE-OBC_NAME
 1. the label value shown is the name of the provisioner but due to Kubernetes restrictions slash (/) is
+1. finalizers set and cleared by the lib's OBC controller. Prevents accidental deletion of an OB.
    replaced by a dash (-). In this example the provisioner name is `aws-s3.io/bucket`.
-1. objectBucketSource is a struct containing metadata of the object store provider.
 1. name of the storage class, referenced by the OBC, containing the provisioner and object store service name.
 1. objectReference to the associated OBC.
 1. reclaim policy from the Storge Class referenced in the OBC.
 1. phase is the current state of the ObjectBucket:
-    - _Pending_: the operator is processing the request
     - _Bound_: the operator finished processing the request and linked the OBC and OB
     - _Released_: the OBC has been deleted, leaving the OB unclaimed.
     - _Failed_: not currently set.
