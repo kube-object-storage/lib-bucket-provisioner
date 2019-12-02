@@ -185,7 +185,7 @@ func (in *ObjectBucketClaim) DeepCopyObject() runtime.Object {
 func (in *ObjectBucketClaimList) DeepCopyInto(out *ObjectBucketClaimList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]ObjectBucketClaim, len(*in))
@@ -257,7 +257,7 @@ func (in *ObjectBucketClaimStatus) DeepCopy() *ObjectBucketClaimStatus {
 func (in *ObjectBucketList) DeepCopyInto(out *ObjectBucketList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]ObjectBucket, len(*in))
