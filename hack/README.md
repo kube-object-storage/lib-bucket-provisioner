@@ -89,11 +89,15 @@ Here are the steps:
 7. set KUBECONFIG env variable:
    `export KUBECONFIG=/home/jvance/.kube/config`
 8. create the CRs:
-   ```
+```
    kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucket_crd.yaml
    kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucketclaim_crd.yaml
-   ```
-9. edit s3-provisioner's OWNER secret yaml (_examples/greenfield/_):
+```
+9. create the _s3-provisioner_ namespace, service account, and roles:
+```
+   kubectl create -f examples/awss3provisioner-deployment.yaml
+```
+10. edit s3-provisioner's OWNER secret yaml (_examples/greenfield/_):
    - change `data` `to stringData` so keys don't have to be base64 encoded
    - add your non-base64 keys:
 ```
@@ -102,11 +106,11 @@ Here are the steps:
 ```
    - create the owner secret:
       `kubectl create -f examples/greenfield/owner-secret.yaml`
-10. create the storageclass (_examples/greenfield/_)
-11. create the obc (_examples/greenfield/_)
-12. finally, run the s3-provisioner:
+11. create the storageclass (_examples/greenfield/_)
+12. create the obc (_examples/greenfield/_)
+13. finally, run the s3-provisioner:
    `bin/aws-s3-provisioner -alsologtostderr -v=2`
-13. [clean up](cleanup.sh) resources to test the next change.
+14. [clean up](cleanup.sh) resources to test the next change.
 
 # TODO
 
