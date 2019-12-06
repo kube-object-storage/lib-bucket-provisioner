@@ -104,10 +104,9 @@ Here are the steps:
       AWS_ACCESS_KEY_ID: xyzzy  # unencoded
       AWS_SECRET_ACCESS_KEY: xyzzy # unencoded
 ```
-   - create the owner secret:
-      `kubectl create -f examples/greenfield/owner-secret.yaml`
-11. create the storageclass (_examples/greenfield/_)
-12. create the obc (_examples/greenfield/_)
+   - create the owner secret: `kubectl create -f examples/greenfield/owner-secret.yaml`
+11. create the storageclass: `kubectl create -f examples/greenfield/storageclass.yaml`
+12. create the obc: `kubectl create -f examples/greenfield/obc.yaml`
 13. finally, run the s3-provisioner:
    `bin/aws-s3-provisioner -alsologtostderr -v=2`
 14. [clean up](cleanup.sh) resources to test the next change.
