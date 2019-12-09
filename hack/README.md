@@ -75,45 +75,42 @@ Aggregates operations for execution by CI.  Right now this is `lint`, `test`, an
 The easist way to test the library is via the [AWS S3 provisioner](https://github.com/yard-turkey/aws-s3-provisioner) and [minikube](https://github.com/kubernetes/minikube). This approach runs the s3 provisioner as a binary (no need for containers, pods, etc).
 Here are the steps:
 
-1. clone the s3-provisioner repo
-2. vendor in dependencies:
-   `[v]go mod vendor`  # only needs to be done once
-3. from the lib repo, copy changed lib file(s) to the target s3-provisioner location under _vendor/_. Eg:
-   `cp pkg/provisioner/controller.go $HOME/go/src/github.com/yard-turkey/aws-s3-provisioner/vendor/github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/`
-4. build the s3 provisioner (from the s3-provisioner dir):
-   `go build -a -o ./bin/aws-s3-provisioner ./cmd/...`
-5. in another window, start minikube:
-   `minikube start --vm-driver=kvm2 --kubernetes-version=v1.14.0 --memory=5000 --cpus=4`
-6. [optional?] update the k8s context:
-   `minikube update-context`
-7. set KUBECONFIG env variable:
-   `export KUBECONFIG=/home/jvance/.kube/config`
-8. create the CRs:
-```
-   kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucket_crd.yaml
-   kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucketclaim_crd.yaml
-```
-9. create the _s3-provisioner_ namespace, service account, and roles:
-```
-   kubectl create -f examples/awss3provisioner-deployment.yaml
-```
-10. edit s3-provisioner's OWNER secret yaml (_examples/greenfield/_):
-   - change `data` `to stringData` so keys don't have to be base64 encoded
-   - add your non-base64 keys:
-```
-      AWS_ACCESS_KEY_ID: xyzzy  # unencoded
-      AWS_SECRET_ACCESS_KEY: xyzzy # unencoded
-```
-   - create the owner secret: `kubectl create -f examples/greenfield/owner-secret.yaml`
-11. create the storageclass: `kubectl create -f examples/greenfield/storageclass.yaml`
-12. create the obc: `kubectl create -f examples/greenfield/obc.yaml`
-13. finally, run the s3-provisioner:
-   `bin/aws-s3-provisioner -alsologtostderr -v=2`
-14. [clean up](cleanup.sh) resources to test the next change.
+1. clone the s3-provisioner repo: 
 
-# TODO
+    `$ go get -u github.com/yard-turkey/aws-s3-provisioner`
+    
+1. Change to the aws-s3-provisioner library:
 
-- P0: solidify and implement the APIs in pkg/apis.  Until we do that, we can't deserialize our workload.
-- P1 some basic Reconciler logic to execute the provisioner interfaces passed in
-- P2 Robustify!
-- P? profit
+    `$ cd $GOPATH/src/github/yard-turkey/aws-s3-provisioner`
+    
+1. Use the `replace` directive to build from the local library code: 
+
+    `$ go mod edit --replace=github.com/kube-object-bucket/lib-bucket-provisioner=$GOPATH/src/github.com/kube-object-storage/lib-bucket-provisioner`
+    
+1. build the s3 provisioner (from the s3-provisioner dir):
+   
+   `$ GOOS=linux GOARCH=amd64 go build -a -o ./bin/aws-s3-provisioner ./cmd/...`
+
+1. Start minikube:
+   
+   `$ minikube start --vm-driver=kvm2 --kubernetes-version=v1.14.0 --memory=5000 --cpus=4 && minikube update-context`
+
+1. Build the container  
+
+    `$ ( eval $(minikube docker-env); docker build -t quay.io/screeley/)aws-s3-provisioner . )`
+
+1. create the CRDs:
+   
+   `$ kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucket_crd.yaml`
+   
+   `$ kubectl create -f https://raw.githubusercontent.com/kube-object-storage/lib-bucket-provisioner/master/deploy/crds/objectbucket_v1alpha1_objectbucketclaim_crd.yaml`
+   
+1. create the AWS bucket manager secret
+
+    `$ kubectl create secret -n s3-provisioner  generic s3-bucket-owner --from-literal=AWS_ACCESS_KEY_ID=<access key> --from-literal=AWS_SECRET_ACCESS_KEY=<secret key>`
+    
+1. create the deployment and storage class
+
+    `$ kubectl create -f ./examples/awss3provisioner-deployment.yaml/ -f ./examples/storageclass.yaml`
+  
+1. [clean up](cleanup.sh) resources to test the next change.
