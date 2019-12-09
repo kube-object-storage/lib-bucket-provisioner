@@ -20,6 +20,13 @@ spec:
           command:
           - lib-bucket-provisioner
           imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "1m"
+              memory: "32Mi"
+            limits:
+              cpu: "1"
+              memory: "128Mi"
           env:
             - name: WATCH_NAMESPACE
               valueFrom:
