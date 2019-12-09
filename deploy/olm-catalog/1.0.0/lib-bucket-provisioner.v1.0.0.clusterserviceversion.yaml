@@ -83,11 +83,11 @@ spec:
   - cloud
   - s3
   installModes:
-  - supported: false
+  - supported: true
     type: OwnNamespace
-  - supported: false
+  - supported: true
     type: SingleNamespace
-  - supported: false
+  - supported: true
     type: MultiNamespace
   - supported: true
     type: AllNamespaces
@@ -157,6 +157,13 @@ spec:
                 - name: lib-bucket-provisioner
                   image: kubernetes/pause
                   imagePullPolicy: Always
+                  resources:
+                    requests:
+                      cpu: "1m"
+                      memory: "32Mi"
+                    limits:
+                      cpu: "1"
+                      memory: "128Mi"
                   env:
                     - name: WATCH_NAMESPACE
                       valueFrom:
