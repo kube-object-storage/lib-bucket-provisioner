@@ -110,7 +110,7 @@ func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap
 	}
 	cm, err := c.CoreV1().ConfigMaps(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting configmap %q: %v", ns+"/"+name, err)
+		return nil, err
 	}
 	return cm, nil
 }
@@ -123,7 +123,7 @@ func secretForClaimKey(key string, c kubernetes.Interface) (sec *corev1.Secret, 
 	}
 	sec, err = c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting secret %q: %v", ns+"/"+name, err)
+		return nil, err
 	}
 	return
 }
