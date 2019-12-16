@@ -208,7 +208,7 @@ func (c *obcController) syncHandler(key string) error {
 			log.Info("OBC vanished, assuming it was deleted")
 			return nil
 		}
-		return fmt.Errorf("could not sync OBC: %v", err)
+		return fmt.Errorf("could not sync OBC %s: %v", key, err)
 	}
 
 	// ***********************
