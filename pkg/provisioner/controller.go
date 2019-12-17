@@ -419,7 +419,7 @@ func (c *obcController) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucket
 
 	log.Info("syncing obc deletion")
 
-	ob, cm, secret, errs := c.getResourcesForDeletionByKey(key)
+	ob, cm, secret, errs := c.getExistingResourcesFromKey(key)
 	if len(errs) > 0 {
 		return fmt.Errorf("error getting resources: %v", errs)
 	}
@@ -463,7 +463,7 @@ func (c *obcController) supportedProvisioner(provisioner string) bool {
 }
 
 // trim the errors resulting from objects not being found
-func (c *obcController) getResourcesForDeletionByKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, []error) {
+func (c *obcController) getExistingResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, []error) {
 	ob, cm, secret, errs := c.getResourcesFromKey(key)
 	for i := len(errs) - 1; i >= 0; i-- {
 		if errors.IsNotFound(errs[i]) {
@@ -479,6 +479,7 @@ func (c *obcController) getResourcesForDeletionByKey(key string) (*v1alpha1.Obje
 func (c *obcController) getResourcesFromKey(key string) (ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, sec *corev1.Secret, errs []error) {
 
 	var err error
+	// The cap(errs) must be large enough to encapsulate errors returned by all 3 *ForClaimKey funcs
 	errs = make([]error, 0, 3)
 	groupErrors := func(err error) {
 		if err != nil {
