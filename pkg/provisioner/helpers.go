@@ -60,7 +60,7 @@ func makeOwnerReference(claim *v1alpha1.ObjectBucketClaim) metav1.OwnerReference
 }
 
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
-	logD.Info("validating claim for provisioning obc", obc.Name)
+	logD.Info("checking OBC for OB name, this indicates provisioning is complete", obc.Name)
 	if obc.Spec.ObjectBucketName != "" {
 		log.Info("provisioning already completed", "ObjectBucket", obc.Spec.ObjectBucketName)
 		return false

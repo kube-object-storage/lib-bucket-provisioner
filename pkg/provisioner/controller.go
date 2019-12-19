@@ -204,11 +204,24 @@ func (c *obcController) syncHandler(key string) error {
 
 	obc, err := claimForKey(key, c.libClientset)
 	if err != nil {
+		//      The OBC was deleted immediately after creation, before it could be processed by
+		//      handleProvisionClaim.  As a finalizer is immediately applied to the OBC before processing,
+		//      if it does not have a finalizer, it was not processed, and no artifacts were created.
+		//      Therefore, it is safe to assume nothing needs to be done.
 		if errors.IsNotFound(err) {
 			log.Info("OBC vanished, assuming it was deleted")
 			return nil
 		}
 		return fmt.Errorf("could not sync OBC %s: %v", key, err)
+	}
+
+	class, err := storageClassForClaim(c.clientset, obc)
+	if err != nil {
+		return err
+	}
+	if !c.supportedProvisioner(class.Provisioner) {
+		log.Info("unsupported provisioner", "got", class.Provisioner)
+		return nil
 	}
 
 	// ***********************
@@ -238,15 +251,6 @@ func (c *obcController) syncHandler(key string) error {
 		return fmt.Errorf("error updating OBC status: %s", err)
 	}
 
-	class, err := storageClassForClaim(c.clientset, obc)
-	if err != nil {
-		return err
-	}
-	if !c.supportedProvisioner(class.Provisioner) {
-		log.Info("unsupported provisioner", "got", class.Provisioner)
-		return nil
-	}
-
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
 	err = c.handleProvisionClaim(key, obc, class)
 
@@ -272,20 +276,27 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return err
 	}
 
-	// If the storage class contains the name of the bucket then we create access
-	// to an existing bucket. If the bucket name does not appear in the storage
-	// class then we dynamically provision a new bucket.
+	// If a storage class contains a non-nil value for the "bucketName" key, it is assumed
+	// to be a Grant request to the given bucket (brownfield).  If the value is nil or the
+	// key is undefined, it is assumed to be a provisioning request.  This allows administrators
+	// to control access to static buckets via RBAC rules on storage classes.
 	isDynamicProvisioning := isNewBucketByStorageClass(class)
 
-	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
-	// It is assumed that if the get claim fails, no resources were generated to begin with.
+	// Should an error be returned, attempt to clean up the object store and API servers by
+	// calling the appropriate provisioner method.  In cases where Provision() or Revoke()
+	// return an err, it's likely that the ob == nil, hindering cleanup.
 	defer func() {
-		if err != nil {
-			log.Info("provisioning errored, cleaning up API resources")
-			if !pErr.IsBucketExists(err) && ob != nil && isDynamicProvisioning {
-				log.Info("deleting storage artifacts")
-				if err = c.provisioner.Delete(ob); err != nil {
-					log.Error(err, "error deleting storage artifacts")
+		if err != nil && ob != nil {
+			log.Info("cleaning up provisioning artifacts")
+			if /*greenfield*/ isDynamicProvisioning && !pErr.IsBucketExists(err) {
+				log.Info("deleting provisioned resources")
+				if dErr := c.provisioner.Delete(ob); dErr != nil {
+					log.Error(dErr, "could not delete provisioned resources")
+				}
+			} else /*brownfield*/ {
+				log.Info("revoking access")
+				if dErr := c.provisioner.Revoke(ob); dErr != nil {
+					log.Error(err, "could not revoke access")
 				}
 			}
 			_ = c.deleteResources(ob, configMap, secret, nil)
