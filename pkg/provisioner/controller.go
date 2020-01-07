@@ -200,28 +200,36 @@ func (c *obcController) processNextItemInQueue() bool {
 func (c *obcController) syncHandler(key string) error {
 
 	setLoggersWithRequest(key)
-	logD.Info("new Reconcile iteration")
+	logD.Info("reconciling claim")
 
 	obc, err := claimForKey(key, c.libClientset)
 	if err != nil {
-		return fmt.Errorf("request key %q: %v", key, err)
-	}
-	if obc == nil {
-		return fmt.Errorf("unexpected nil obc for request key %q", key)
-	}
-
-	deleteEvent := obc.ObjectMeta.DeletionTimestamp != nil
-
-	if deleteEvent {
-		// ***********************
-		// Delete or Revoke Bucket
-		// ***********************
-		log.Info("OBC deleted, proceeding with cleanup")
-		err = c.handleDeleteClaim(key, obc)
-		if err != nil {
-			log.Error(err, "error cleaning up OBC", "name", key)
+		//      The OBC was deleted immediately after creation, before it could be processed by
+		//      handleProvisionClaim.  As a finalizer is immediately applied to the OBC before processing,
+		//      if it does not have a finalizer, it was not processed, and no artifacts were created.
+		//      Therefore, it is safe to assume nothing needs to be done.
+		if errors.IsNotFound(err) {
+			log.Info("OBC vanished, assuming it was deleted")
+			return nil
 		}
+		return fmt.Errorf("could not sync OBC %s: %v", key, err)
+	}
+
+	class, err := storageClassForClaim(c.clientset, obc)
+	if err != nil {
 		return err
+	}
+	if !c.supportedProvisioner(class.Provisioner) {
+		log.Info("unsupported provisioner", "got", class.Provisioner)
+		return nil
+	}
+
+	// ***********************
+	// Delete or Revoke Bucket
+	// ***********************
+	if obc.ObjectMeta.DeletionTimestamp != nil {
+		log.Info("OBC deleted, proceeding with cleanup")
+		return c.handleDeleteClaim(key, obc)
 	}
 
 	// *******************************************************
@@ -243,15 +251,6 @@ func (c *obcController) syncHandler(key string) error {
 		return fmt.Errorf("error updating OBC status: %s", err)
 	}
 
-	class, err := storageClassForClaim(c.clientset, obc)
-	if err != nil {
-		return err
-	}
-	if !c.supportedProvisioner(class.Provisioner) {
-		log.Info("unsupported provisioner", "got", class.Provisioner)
-		return nil
-	}
-
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
 	err = c.handleProvisionClaim(key, obc, class)
 
@@ -261,12 +260,15 @@ func (c *obcController) syncHandler(key string) error {
 
 // handleProvision is an extraction of the core provisioning process in order to defer clean up
 // on a provisioning failure
-func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) (err error) {
+func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
+
+	log.Info("syncing obc creation")
 
 	var (
 		ob        *v1alpha1.ObjectBucket
 		secret    *corev1.Secret
 		configMap *corev1.ConfigMap
+		err       error
 	)
 
 	// set finalizer in OBC so that resources cleaned up is controlled when the obc is deleted
@@ -274,20 +276,27 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return err
 	}
 
-	// If the storage class contains the name of the bucket then we create access
-	// to an existing bucket. If the bucket name does not appear in the storage
-	// class then we dynamically provision a new bucket.
+	// If a storage class contains a non-nil value for the "bucketName" key, it is assumed
+	// to be a Grant request to the given bucket (brownfield).  If the value is nil or the
+	// key is undefined, it is assumed to be a provisioning request.  This allows administrators
+	// to control access to static buckets via RBAC rules on storage classes.
 	isDynamicProvisioning := isNewBucketByStorageClass(class)
 
-	// Following getting the claim, if any provisioning task fails, clean up provisioned artifacts.
-	// It is assumed that if the get claim fails, no resources were generated to begin with.
+	// Should an error be returned, attempt to clean up the object store and API servers by
+	// calling the appropriate provisioner method.  In cases where Provision() or Revoke()
+	// return an err, it's likely that the ob == nil, hindering cleanup.
 	defer func() {
-		if err != nil {
-			log.Error(err, "cleaning up reconcile artifacts")
-			if !pErr.IsBucketExists(err) && ob != nil && isDynamicProvisioning {
-				log.Info("deleting storage artifacts")
-				if err = c.provisioner.Delete(ob); err != nil {
-					log.Error(err, "error deleting storage artifacts")
+		if err != nil && ob != nil {
+			log.Info("cleaning up provisioning artifacts")
+			if /*greenfield*/ isDynamicProvisioning && !pErr.IsBucketExists(err) {
+				log.Info("deleting provisioned resources")
+				if dErr := c.provisioner.Delete(ob); dErr != nil {
+					log.Error(dErr, "could not delete provisioned resources")
+				}
+			} else /*brownfield*/ {
+				log.Info("revoking access")
+				if dErr := c.provisioner.Revoke(ob); dErr != nil {
+					log.Error(err, "could not revoke access")
 				}
 			}
 			_ = c.deleteResources(ob, configMap, secret, nil)
@@ -414,14 +423,16 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 }
 
 // Delete or Revoke access to bucket defined by passed-in key and obc.
-// TODO each delete should retry a few times to mitigate intermittent errors
 func (c *obcController) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucketClaim) error {
 	// Call `Delete` for new (greenfield) buckets with reclaimPolicy == "Delete".
 	// Call `Revoke` for new buckets with reclaimPolicy != "Delete".
 	// Call `Revoke` for existing (brownfield) buckets regardless of reclaimPolicy.
-	ob, cm, secret, err := c.getResourcesFromKey(key)
-	if err != nil {
-		return err
+
+	log.Info("syncing obc deletion")
+
+	ob, cm, secret, errs := c.getExistingResourcesFromKey(key)
+	if len(errs) > 0 {
+		return fmt.Errorf("error getting resources: %v", errs)
 	}
 
 	// Delete/Revoke cannot be called if the ob is nil; however, if the secret
@@ -438,7 +449,7 @@ func (c *obcController) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucket
 
 	// call Delete or Revoke and then delete generated k8s resources
 	// Note: if Delete or Revoke return err then we do not try to delete resources
-	ob, err = updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, defaultRetryBaseInterval, defaultRetryTimeout)
+	ob, err := updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, defaultRetryBaseInterval, defaultRetryTimeout)
 	if err != nil {
 		return err
 	}
@@ -462,33 +473,39 @@ func (c *obcController) supportedProvisioner(provisioner string) bool {
 	return provisioner == c.provisionerName
 }
 
-// Returns the ob, configmap, and secret based on the passed-in key. Only returns non-nil
-// error if unable to get all resources. Some resources may be nil.
-func (c *obcController) getResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, error) {
+// trim the errors resulting from objects not being found
+func (c *obcController) getExistingResourcesFromKey(key string) (*v1alpha1.ObjectBucket, *corev1.ConfigMap, *corev1.Secret, []error) {
+	ob, cm, secret, errs := c.getResourcesFromKey(key)
+	for i := len(errs) - 1; i >= 0; i-- {
+		if errors.IsNotFound(errs[i]) {
+			errs = append(errs[:i], errs[i+1:]...)
+		}
+	}
+	return ob, cm, secret, errs
+}
 
-	ob, obErr := c.objectBucketForClaimKey(key)
-	if errors.IsNotFound(obErr) {
-		log.Error(obErr, "objectBucket not found")
-		obErr = nil
-	}
-	cm, cmErr := configMapForClaimKey(key, c.clientset)
-	if errors.IsNotFound(cmErr) {
-		log.Error(cmErr, "configMap not found")
-		cmErr = nil
-	}
-	s, sErr := secretForClaimKey(key, c.clientset)
-	if errors.IsNotFound(sErr) {
-		log.Error(sErr, "secret not found")
-		sErr = nil
-	}
+// Gathers resources by names derived from key.
+// Returns pointers to those resources if they exist, nil otherwise and an slice of errors who's
+// len() == n errors. If no errors occur, len() is 0.
+func (c *obcController) getResourcesFromKey(key string) (ob *v1alpha1.ObjectBucket, cm *corev1.ConfigMap, sec *corev1.Secret, errs []error) {
 
 	var err error
-	// return err if all resources were not retrieved, else no error
-	if obErr != nil && cmErr != nil && sErr != nil {
-		err = fmt.Errorf("could not get all needed resources: %v : %v : %v", obErr, cmErr, sErr)
+	// The cap(errs) must be large enough to encapsulate errors returned by all 3 *ForClaimKey funcs
+	errs = make([]error, 0, 3)
+	groupErrors := func(err error) {
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
-	return ob, cm, s, err
+	ob, err = c.objectBucketForClaimKey(key)
+	groupErrors(err)
+	cm, err = configMapForClaimKey(key, c.clientset)
+	groupErrors(err)
+	sec, err = secretForClaimKey(key, c.clientset)
+	groupErrors(err)
+
+	return
 }
 
 // Deleting the resources generated by a Provision or Grant call is triggered by the delete of
@@ -550,7 +567,7 @@ func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBuc
 	}
 	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("error getting object bucket %q: %v", name, err)
+		return nil, err
 	}
 	return ob, nil
 }

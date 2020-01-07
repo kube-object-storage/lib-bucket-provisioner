@@ -299,7 +299,7 @@ func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, p
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
 		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(ob)
-		return (err == nil), err
+		return err == nil, err
 	})
 	return
 }
