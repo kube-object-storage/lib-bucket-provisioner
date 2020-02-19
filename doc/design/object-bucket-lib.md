@@ -6,8 +6,9 @@ The goal is to eventually move this library to a Kubernetes repo within sig-stor
 A note about this design document: the _current_ bucket provisioning design and implementation is reflected in this document,
 and an effort is made to keep it up-to-date. Future considerations are tracked as _Issues_ in this repo and tagged with the `enhancement` label.
 
-#### UPDATE (Jan 2020): 
-There is a [_Kubernetes Enhancement Proposal (KEP)_](https://github.com/kubernetes/enhancements/pull/1383) presenting this bucket provisioning enhancement. It is currently under review and it is likely that the design document below will change to support [CSI](https://kubernetes-csi.github.io/docs/).
+#### UPDATE (Feb 2020): 
+DEPRECATION NOTICE:
+This repo is not active. There is a [_Kubernetes Enhancement Proposal (KEP)_](https://github.com/kubernetes/enhancements/pull/1383) presenting this bucket provisioning enhancement. It is currently under review and it is likely that the design document below will change significantly to support a CSI-like interface.
 
 ### Table Of Contents
 1. [Goals](#goals)
