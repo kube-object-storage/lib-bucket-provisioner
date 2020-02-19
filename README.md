@@ -1,3 +1,6 @@
+## DEPRECATION NOTICE:
+There is a [Kubernetes Enhancement Proposal](https://github.com/kubernetes/enhancements/pull/1383) under review which will significantly change this design and interfaces. This repo is not longer active and should not be used.
+
 ## Bucket Provisioning Library
 This repo is a temporary placeholder for a general purpose object-store bucket provisioning library, very similar to the Kubernetes [sig-storage-lib-external-provisioner](https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/blob/master/controller/controller.go) library.
 The goal is to eventually move this repo to a Kubernetes repo within _sig-storage/_, but this may never happen.
