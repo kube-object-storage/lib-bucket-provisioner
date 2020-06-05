@@ -85,7 +85,7 @@ Here are the steps:
     
 1. Use the `replace` directive to build from the local library code: 
 
-    `$ go mod edit --replace=github.com/kube-object-bucket/lib-bucket-provisioner=$GOPATH/src/github.com/kube-object-storage/lib-bucket-provisioner`
+    `$ go mod edit --replace=github.com/kube-object-storage/lib-bucket-provisioner=$GOPATH/src/github.com/kube-object-storage/lib-bucket-provisioner`
     
 1. build the s3 provisioner (from the s3-provisioner dir):
    
