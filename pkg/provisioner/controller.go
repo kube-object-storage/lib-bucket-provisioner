@@ -18,6 +18,8 @@ package provisioner
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -115,8 +117,13 @@ func (c *obcController) Start(stopCh <-chan struct{}) error {
 	if !cache.WaitForCacheSync(stopCh, c.obcHasSynced, c.obHasSynced) {
 		return fmt.Errorf("failed to waith for caches to sync ")
 	}
-	go wait.Until(c.runWorker, time.Second, stopCh)
-
+	count := 1
+	if threadiness, set := os.LookupEnv("LIB_BUCKET_PROVISIONER_THREADS"); set {
+		count, _ = strconv.Atoi(threadiness)
+	}
+	for i := 0; i < count; i++ {
+		go wait.Until(c.runWorker, time.Second, stopCh)
+	}
 	<-stopCh
 	return nil
 }
