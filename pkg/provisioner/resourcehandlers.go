@@ -17,6 +17,7 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -137,7 +138,7 @@ func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication
 	}
 	logD.Info("creating Secret", "name", secret.Namespace+"/"+secret.Name)
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		secret, err = c.CoreV1().Secrets(obc.Namespace).Create(secret)
+		secret, err = c.CoreV1().Secrets(obc.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
 		if err != nil {
 			if errors.IsAlreadyExists(err) {
 				// The object already exists don't spam the logs, instead let the request be requeued
@@ -160,7 +161,7 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, lab
 
 	logD.Info("creating ConfigMap", "name", configMap.Namespace+"/"+configMap.Name)
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(configMap)
+		configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(context.TODO(), configMap, metav1.CreateOptions{})
 		if err != nil {
 			if errors.IsAlreadyExists(err) {
 				// The object already exists don't spam the logs, instead let the request be requeued
@@ -182,13 +183,13 @@ func releaseConfigMap(cm *corev1.ConfigMap, c kubernetes.Interface) (err error) 
 		logD.Info("got nil configmap, skipping")
 		return nil
 	}
-	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Get(cm.Name, metav1.GetOptions{})
+	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Get(context.TODO(), cm.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	logD.Info("removing configmap finalizer")
 	removeFinalizer(cm)
-	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Update(cm)
+	cm, err = c.CoreV1().ConfigMaps(cm.Namespace).Update(context.TODO(), cm, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -203,13 +204,13 @@ func releaseSecret(sec *corev1.Secret, c kubernetes.Interface) (err error) {
 		logD.Info("got nil secret, skipping")
 		return nil
 	}
-	sec, err = c.CoreV1().Secrets(sec.Namespace).Get(sec.Name, metav1.GetOptions{})
+	sec, err = c.CoreV1().Secrets(sec.Namespace).Get(context.TODO(), sec.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	logD.Info("removing secret finalizer")
 	removeFinalizer(sec)
-	sec, err = c.CoreV1().Secrets(sec.Namespace).Update(sec)
+	sec, err = c.CoreV1().Secrets(sec.Namespace).Update(context.TODO(), sec, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
