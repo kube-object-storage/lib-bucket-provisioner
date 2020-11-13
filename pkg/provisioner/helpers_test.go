@@ -17,6 +17,7 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"testing"
@@ -104,7 +105,7 @@ func Test_objectBucketClaimReconciler_shouldProvision(t *testing.T) {
 		var err error
 		c := tt.fields.client
 		if tt.class != nil {
-			if tt.class, err = c.StorageV1().StorageClasses().Create(tt.class); err != nil {
+			if tt.class, err = c.StorageV1().StorageClasses().Create(context.TODO(), tt.class, metav1.CreateOptions{}); err != nil {
 				t.Errorf("error precreating class: %v", err)
 			}
 		}
@@ -274,7 +275,7 @@ func TestStorageClassForClaim(t *testing.T) {
 			}
 			class := tt.want
 			if class != nil {
-				if class, err = tt.args.client.StorageV1().StorageClasses().Create(class); err != nil {
+				if class, err = tt.args.client.StorageV1().StorageClasses().Create(context.TODO(), class, metav1.CreateOptions{}); err != nil {
 					t.Errorf("error pre-creating StorageClass: %v", err)
 				}
 			}

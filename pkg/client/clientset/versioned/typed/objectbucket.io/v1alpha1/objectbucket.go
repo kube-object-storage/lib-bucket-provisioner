@@ -19,14 +19,14 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"time"
-
+	"context"
 	v1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	scheme "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
+	"time"
 )
 
 // ObjectBucketsGetter has a method to return a ObjectBucketInterface.
@@ -68,7 +68,7 @@ func (c *objectBuckets) Get(name string, options v1.GetOptions) (result *v1alpha
 		Resource("objectbuckets").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -84,7 +84,7 @@ func (c *objectBuckets) List(opts v1.ListOptions) (result *v1alpha1.ObjectBucket
 		Resource("objectbuckets").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -100,7 +100,7 @@ func (c *objectBuckets) Watch(opts v1.ListOptions) (watch.Interface, error) {
 		Resource("objectbuckets").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(context.TODO())
 }
 
 // Create takes the representation of a objectBucket and creates it.  Returns the server's representation of the objectBucket, and an error, if there is any.
@@ -109,7 +109,7 @@ func (c *objectBuckets) Create(objectBucket *v1alpha1.ObjectBucket) (result *v1a
 	err = c.client.Post().
 		Resource("objectbuckets").
 		Body(objectBucket).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -121,7 +121,7 @@ func (c *objectBuckets) Update(objectBucket *v1alpha1.ObjectBucket) (result *v1a
 		Resource("objectbuckets").
 		Name(objectBucket.Name).
 		Body(objectBucket).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -136,7 +136,7 @@ func (c *objectBuckets) UpdateStatus(objectBucket *v1alpha1.ObjectBucket) (resul
 		Name(objectBucket.Name).
 		SubResource("status").
 		Body(objectBucket).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -147,7 +147,7 @@ func (c *objectBuckets) Delete(name string, options *v1.DeleteOptions) error {
 		Resource("objectbuckets").
 		Name(name).
 		Body(options).
-		Do().
+		Do(context.TODO()).
 		Error()
 }
 
@@ -162,7 +162,7 @@ func (c *objectBuckets) DeleteCollection(options *v1.DeleteOptions, listOptions 
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Timeout(timeout).
 		Body(options).
-		Do().
+		Do(context.TODO()).
 		Error()
 }
 
@@ -174,7 +174,7 @@ func (c *objectBuckets) Patch(name string, pt types.PatchType, data []byte, subr
 		SubResource(subresources...).
 		Name(name).
 		Body(data).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }

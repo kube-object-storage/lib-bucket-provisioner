@@ -19,14 +19,14 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"time"
-
+	"context"
 	v1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	scheme "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
+	"time"
 )
 
 // ObjectBucketClaimsGetter has a method to return a ObjectBucketClaimInterface.
@@ -65,13 +65,14 @@ func newObjectBucketClaims(c *ObjectbucketV1alpha1Client, namespace string) *obj
 
 // Get takes name of the objectBucketClaim, and returns the corresponding objectBucketClaim object, and an error if there is any.
 func (c *objectBucketClaims) Get(name string, options v1.GetOptions) (result *v1alpha1.ObjectBucketClaim, err error) {
+	ctx := context.TODO()
 	result = &v1alpha1.ObjectBucketClaim{}
 	err = c.client.Get().
 		Namespace(c.ns).
 		Resource("objectbucketclaims").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(ctx).
 		Into(result)
 	return
 }
@@ -88,7 +89,7 @@ func (c *objectBucketClaims) List(opts v1.ListOptions) (result *v1alpha1.ObjectB
 		Resource("objectbucketclaims").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -105,7 +106,7 @@ func (c *objectBucketClaims) Watch(opts v1.ListOptions) (watch.Interface, error)
 		Resource("objectbucketclaims").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch()
+		Watch(context.TODO())
 }
 
 // Create takes the representation of a objectBucketClaim and creates it.  Returns the server's representation of the objectBucketClaim, and an error, if there is any.
@@ -115,7 +116,7 @@ func (c *objectBucketClaims) Create(objectBucketClaim *v1alpha1.ObjectBucketClai
 		Namespace(c.ns).
 		Resource("objectbucketclaims").
 		Body(objectBucketClaim).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -128,7 +129,7 @@ func (c *objectBucketClaims) Update(objectBucketClaim *v1alpha1.ObjectBucketClai
 		Resource("objectbucketclaims").
 		Name(objectBucketClaim.Name).
 		Body(objectBucketClaim).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -144,7 +145,7 @@ func (c *objectBucketClaims) UpdateStatus(objectBucketClaim *v1alpha1.ObjectBuck
 		Name(objectBucketClaim.Name).
 		SubResource("status").
 		Body(objectBucketClaim).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }
@@ -156,12 +157,13 @@ func (c *objectBucketClaims) Delete(name string, options *v1.DeleteOptions) erro
 		Resource("objectbucketclaims").
 		Name(name).
 		Body(options).
-		Do().
+		Do(context.TODO()).
 		Error()
 }
 
 // DeleteCollection deletes a collection of objects.
 func (c *objectBucketClaims) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+	ctx := context.TODO()
 	var timeout time.Duration
 	if listOptions.TimeoutSeconds != nil {
 		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
@@ -172,7 +174,7 @@ func (c *objectBucketClaims) DeleteCollection(options *v1.DeleteOptions, listOpt
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Timeout(timeout).
 		Body(options).
-		Do().
+		Do(ctx).
 		Error()
 }
 
@@ -185,7 +187,7 @@ func (c *objectBucketClaims) Patch(name string, pt types.PatchType, data []byte,
 		SubResource(subresources...).
 		Name(name).
 		Body(data).
-		Do().
+		Do(context.TODO()).
 		Into(result)
 	return
 }

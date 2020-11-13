@@ -17,6 +17,7 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -108,7 +109,7 @@ func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap
 	if err != nil {
 		return nil, err
 	}
-	cm, err := c.CoreV1().ConfigMaps(ns).Get(name, metav1.GetOptions{})
+	cm, err := c.CoreV1().ConfigMaps(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +122,7 @@ func secretForClaimKey(key string, c kubernetes.Interface) (sec *corev1.Secret, 
 	if err != nil {
 		return nil, err
 	}
-	sec, err = c.CoreV1().Secrets(ns).Get(name, metav1.GetOptions{})
+	sec, err = c.CoreV1().Secrets(ns).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +180,7 @@ func storageClassForClaim(c kubernetes.Interface, obc *v1alpha1.ObjectBucketClai
 		return nil, fmt.Errorf("no StorageClass defined for ObjectBucketClaim \"%s/%s\"", obc.Namespace, obc.Name)
 	}
 	logD.Info("getting ObjectBucketClaim's StorageClass")
-	class, err := c.StorageV1().StorageClasses().Get(obc.Spec.StorageClassName, metav1.GetOptions{})
+	class, err := c.StorageV1().StorageClasses().Get(context.TODO(), obc.Spec.StorageClassName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting StorageClass %q: %v", obc.Spec.StorageClassName, err)
 	}
@@ -195,7 +196,7 @@ func storageClassForObjectBucket(ob *v1alpha1.ObjectBucket, c kubernetes.Interfa
 		return nil, fmt.Errorf("no StorageClass defined for ObjectBucket %q", ob.Name)
 	}
 	logD.Info("getting ObjectBucket's storage class", "name", ob.Spec.StorageClassName)
-	class, err := c.StorageV1().StorageClasses().Get(ob.Spec.StorageClassName, metav1.GetOptions{})
+	class, err := c.StorageV1().StorageClasses().Get(context.TODO(), ob.Spec.StorageClassName, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting StorageClass %q: %v", ob.Spec.StorageClassName, err)
 	}
