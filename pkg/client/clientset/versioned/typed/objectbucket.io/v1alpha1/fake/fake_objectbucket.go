@@ -1,5 +1,5 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2019 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -38,7 +40,7 @@ var objectbucketsResource = schema.GroupVersionResource{Group: "objectbucket.io"
 var objectbucketsKind = schema.GroupVersionKind{Group: "objectbucket.io", Version: "v1alpha1", Kind: "ObjectBucket"}
 
 // Get takes name of the objectBucket, and returns the corresponding objectBucket object, and an error if there is any.
-func (c *FakeObjectBuckets) Get(name string, options v1.GetOptions) (result *v1alpha1.ObjectBucket, err error) {
+func (c *FakeObjectBuckets) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.ObjectBucket, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootGetAction(objectbucketsResource, name), &v1alpha1.ObjectBucket{})
 	if obj == nil {
@@ -48,7 +50,7 @@ func (c *FakeObjectBuckets) Get(name string, options v1.GetOptions) (result *v1a
 }
 
 // List takes label and field selectors, and returns the list of ObjectBuckets that match those selectors.
-func (c *FakeObjectBuckets) List(opts v1.ListOptions) (result *v1alpha1.ObjectBucketList, err error) {
+func (c *FakeObjectBuckets) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.ObjectBucketList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootListAction(objectbucketsResource, objectbucketsKind, opts), &v1alpha1.ObjectBucketList{})
 	if obj == nil {
@@ -69,13 +71,13 @@ func (c *FakeObjectBuckets) List(opts v1.ListOptions) (result *v1alpha1.ObjectBu
 }
 
 // Watch returns a watch.Interface that watches the requested objectBuckets.
-func (c *FakeObjectBuckets) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeObjectBuckets) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewRootWatchAction(objectbucketsResource, opts))
 }
 
 // Create takes the representation of a objectBucket and creates it.  Returns the server's representation of the objectBucket, and an error, if there is any.
-func (c *FakeObjectBuckets) Create(objectBucket *v1alpha1.ObjectBucket) (result *v1alpha1.ObjectBucket, err error) {
+func (c *FakeObjectBuckets) Create(ctx context.Context, objectBucket *v1alpha1.ObjectBucket, opts v1.CreateOptions) (result *v1alpha1.ObjectBucket, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootCreateAction(objectbucketsResource, objectBucket), &v1alpha1.ObjectBucket{})
 	if obj == nil {
@@ -85,7 +87,7 @@ func (c *FakeObjectBuckets) Create(objectBucket *v1alpha1.ObjectBucket) (result 
 }
 
 // Update takes the representation of a objectBucket and updates it. Returns the server's representation of the objectBucket, and an error, if there is any.
-func (c *FakeObjectBuckets) Update(objectBucket *v1alpha1.ObjectBucket) (result *v1alpha1.ObjectBucket, err error) {
+func (c *FakeObjectBuckets) Update(ctx context.Context, objectBucket *v1alpha1.ObjectBucket, opts v1.UpdateOptions) (result *v1alpha1.ObjectBucket, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateAction(objectbucketsResource, objectBucket), &v1alpha1.ObjectBucket{})
 	if obj == nil {
@@ -96,7 +98,7 @@ func (c *FakeObjectBuckets) Update(objectBucket *v1alpha1.ObjectBucket) (result 
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeObjectBuckets) UpdateStatus(objectBucket *v1alpha1.ObjectBucket) (*v1alpha1.ObjectBucket, error) {
+func (c *FakeObjectBuckets) UpdateStatus(ctx context.Context, objectBucket *v1alpha1.ObjectBucket, opts v1.UpdateOptions) (*v1alpha1.ObjectBucket, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootUpdateSubresourceAction(objectbucketsResource, "status", objectBucket), &v1alpha1.ObjectBucket{})
 	if obj == nil {
@@ -106,22 +108,22 @@ func (c *FakeObjectBuckets) UpdateStatus(objectBucket *v1alpha1.ObjectBucket) (*
 }
 
 // Delete takes name of the objectBucket and deletes it. Returns an error if one occurs.
-func (c *FakeObjectBuckets) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeObjectBuckets) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewRootDeleteAction(objectbucketsResource, name), &v1alpha1.ObjectBucket{})
 	return err
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeObjectBuckets) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(objectbucketsResource, listOptions)
+func (c *FakeObjectBuckets) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewRootDeleteCollectionAction(objectbucketsResource, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.ObjectBucketList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched objectBucket.
-func (c *FakeObjectBuckets) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.ObjectBucket, err error) {
+func (c *FakeObjectBuckets) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.ObjectBucket, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewRootPatchSubresourceAction(objectbucketsResource, name, pt, data, subresources...), &v1alpha1.ObjectBucket{})
 	if obj == nil {

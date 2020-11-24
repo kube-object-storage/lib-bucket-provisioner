@@ -14,5 +14,3 @@ require (
 	k8s.io/client-go v0.19.3
 	k8s.io/klog v1.0.0
 )
-
-require k8s.io/code-generator v0.19.3 // indirect

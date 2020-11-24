@@ -1,5 +1,5 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2019 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	"context"
+
 	v1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	labels "k8s.io/apimachinery/pkg/labels"
@@ -39,7 +41,7 @@ var objectbucketclaimsResource = schema.GroupVersionResource{Group: "objectbucke
 var objectbucketclaimsKind = schema.GroupVersionKind{Group: "objectbucket.io", Version: "v1alpha1", Kind: "ObjectBucketClaim"}
 
 // Get takes name of the objectBucketClaim, and returns the corresponding objectBucketClaim object, and an error if there is any.
-func (c *FakeObjectBucketClaims) Get(name string, options v1.GetOptions) (result *v1alpha1.ObjectBucketClaim, err error) {
+func (c *FakeObjectBucketClaims) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.ObjectBucketClaim, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewGetAction(objectbucketclaimsResource, c.ns, name), &v1alpha1.ObjectBucketClaim{})
 
@@ -50,7 +52,7 @@ func (c *FakeObjectBucketClaims) Get(name string, options v1.GetOptions) (result
 }
 
 // List takes label and field selectors, and returns the list of ObjectBucketClaims that match those selectors.
-func (c *FakeObjectBucketClaims) List(opts v1.ListOptions) (result *v1alpha1.ObjectBucketClaimList, err error) {
+func (c *FakeObjectBucketClaims) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.ObjectBucketClaimList, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewListAction(objectbucketclaimsResource, objectbucketclaimsKind, c.ns, opts), &v1alpha1.ObjectBucketClaimList{})
 
@@ -72,14 +74,14 @@ func (c *FakeObjectBucketClaims) List(opts v1.ListOptions) (result *v1alpha1.Obj
 }
 
 // Watch returns a watch.Interface that watches the requested objectBucketClaims.
-func (c *FakeObjectBucketClaims) Watch(opts v1.ListOptions) (watch.Interface, error) {
+func (c *FakeObjectBucketClaims) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
 	return c.Fake.
 		InvokesWatch(testing.NewWatchAction(objectbucketclaimsResource, c.ns, opts))
 
 }
 
 // Create takes the representation of a objectBucketClaim and creates it.  Returns the server's representation of the objectBucketClaim, and an error, if there is any.
-func (c *FakeObjectBucketClaims) Create(objectBucketClaim *v1alpha1.ObjectBucketClaim) (result *v1alpha1.ObjectBucketClaim, err error) {
+func (c *FakeObjectBucketClaims) Create(ctx context.Context, objectBucketClaim *v1alpha1.ObjectBucketClaim, opts v1.CreateOptions) (result *v1alpha1.ObjectBucketClaim, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewCreateAction(objectbucketclaimsResource, c.ns, objectBucketClaim), &v1alpha1.ObjectBucketClaim{})
 
@@ -90,7 +92,7 @@ func (c *FakeObjectBucketClaims) Create(objectBucketClaim *v1alpha1.ObjectBucket
 }
 
 // Update takes the representation of a objectBucketClaim and updates it. Returns the server's representation of the objectBucketClaim, and an error, if there is any.
-func (c *FakeObjectBucketClaims) Update(objectBucketClaim *v1alpha1.ObjectBucketClaim) (result *v1alpha1.ObjectBucketClaim, err error) {
+func (c *FakeObjectBucketClaims) Update(ctx context.Context, objectBucketClaim *v1alpha1.ObjectBucketClaim, opts v1.UpdateOptions) (result *v1alpha1.ObjectBucketClaim, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateAction(objectbucketclaimsResource, c.ns, objectBucketClaim), &v1alpha1.ObjectBucketClaim{})
 
@@ -102,7 +104,7 @@ func (c *FakeObjectBucketClaims) Update(objectBucketClaim *v1alpha1.ObjectBucket
 
 // UpdateStatus was generated because the type contains a Status member.
 // Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeObjectBucketClaims) UpdateStatus(objectBucketClaim *v1alpha1.ObjectBucketClaim) (*v1alpha1.ObjectBucketClaim, error) {
+func (c *FakeObjectBucketClaims) UpdateStatus(ctx context.Context, objectBucketClaim *v1alpha1.ObjectBucketClaim, opts v1.UpdateOptions) (*v1alpha1.ObjectBucketClaim, error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewUpdateSubresourceAction(objectbucketclaimsResource, "status", c.ns, objectBucketClaim), &v1alpha1.ObjectBucketClaim{})
 
@@ -113,7 +115,7 @@ func (c *FakeObjectBucketClaims) UpdateStatus(objectBucketClaim *v1alpha1.Object
 }
 
 // Delete takes name of the objectBucketClaim and deletes it. Returns an error if one occurs.
-func (c *FakeObjectBucketClaims) Delete(name string, options *v1.DeleteOptions) error {
+func (c *FakeObjectBucketClaims) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
 		Invokes(testing.NewDeleteAction(objectbucketclaimsResource, c.ns, name), &v1alpha1.ObjectBucketClaim{})
 
@@ -121,15 +123,15 @@ func (c *FakeObjectBucketClaims) Delete(name string, options *v1.DeleteOptions) 
 }
 
 // DeleteCollection deletes a collection of objects.
-func (c *FakeObjectBucketClaims) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
-	action := testing.NewDeleteCollectionAction(objectbucketclaimsResource, c.ns, listOptions)
+func (c *FakeObjectBucketClaims) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	action := testing.NewDeleteCollectionAction(objectbucketclaimsResource, c.ns, listOpts)
 
 	_, err := c.Fake.Invokes(action, &v1alpha1.ObjectBucketClaimList{})
 	return err
 }
 
 // Patch applies the patch and returns the patched objectBucketClaim.
-func (c *FakeObjectBucketClaims) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.ObjectBucketClaim, err error) {
+func (c *FakeObjectBucketClaims) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.ObjectBucketClaim, err error) {
 	obj, err := c.Fake.
 		Invokes(testing.NewPatchSubresourceAction(objectbucketclaimsResource, c.ns, name, pt, data, subresources...), &v1alpha1.ObjectBucketClaim{})
 

@@ -1,5 +1,5 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2019 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,8 +26,10 @@ import (
 )
 
 // ObjectBucketClaimLister helps list ObjectBucketClaims.
+// All objects returned here must be treated as read-only.
 type ObjectBucketClaimLister interface {
 	// List lists all ObjectBucketClaims in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.ObjectBucketClaim, err error)
 	// ObjectBucketClaims returns an object that can list and get ObjectBucketClaims.
 	ObjectBucketClaims(namespace string) ObjectBucketClaimNamespaceLister
@@ -58,10 +60,13 @@ func (s *objectBucketClaimLister) ObjectBucketClaims(namespace string) ObjectBuc
 }
 
 // ObjectBucketClaimNamespaceLister helps list and get ObjectBucketClaims.
+// All objects returned here must be treated as read-only.
 type ObjectBucketClaimNamespaceLister interface {
 	// List lists all ObjectBucketClaims in the indexer for a given namespace.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.ObjectBucketClaim, err error)
 	// Get retrieves the ObjectBucketClaim from the indexer for a given namespace and name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.ObjectBucketClaim, error)
 	ObjectBucketClaimNamespaceListerExpansion
 }

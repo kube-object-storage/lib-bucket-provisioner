@@ -1,5 +1,5 @@
 /*
-Copyright The Kubernetes Authors.
+Copyright 2019 Red Hat Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,10 +26,13 @@ import (
 )
 
 // ObjectBucketLister helps list ObjectBuckets.
+// All objects returned here must be treated as read-only.
 type ObjectBucketLister interface {
 	// List lists all ObjectBuckets in the indexer.
+	// Objects returned here must be treated as read-only.
 	List(selector labels.Selector) (ret []*v1alpha1.ObjectBucket, err error)
 	// Get retrieves the ObjectBucket from the index for a given name.
+	// Objects returned here must be treated as read-only.
 	Get(name string) (*v1alpha1.ObjectBucket, error)
 	ObjectBucketListerExpansion
 }

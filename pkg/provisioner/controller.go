@@ -17,6 +17,7 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -420,7 +421,8 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 
 	// update OBC
 	obc.Spec.ObjectBucketName = ob.Name
-	obc.Spec.BucketName = bucketName
+	// Do not set obc.Spec.BucketName here: (1) if user has it set, it should be as they set it
+	// (2) if generateBucketName is set, setting this will cause errors if provisioning runs again
 	obc, err = updateClaim(
 		c.libClientset,
 		obc,
@@ -563,7 +565,7 @@ func (c *obcController) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err e
 	clib := c.libClientset
 
 	logD.Info("getting OBC to set metadata fields")
-	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(obc.Name, metav1.GetOptions{})
+	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(context.TODO(), obc.Name, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("error getting obc: %v", err)
 	}
@@ -586,7 +588,7 @@ func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBuc
 	if err != nil {
 		return nil, err
 	}
-	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
+	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
