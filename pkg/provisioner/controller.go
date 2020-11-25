@@ -322,7 +322,11 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	setBasicOBInfo := func() {
 		setObjectBucketName(ob, key)
 		ob.Spec.StorageClassName = obc.Spec.StorageClassName
-		ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+		if ob.Spec.ReclaimPolicy == nil || *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimPolicy("") {
+			// Do not blindly overwrite the reclaim policy. The provisioner might have reason to
+			// specify a reclaim policy that is  different from the storage class.
+			ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+		}
 		ob.SetLabels(c.provisionerLabels)
 	}
 
