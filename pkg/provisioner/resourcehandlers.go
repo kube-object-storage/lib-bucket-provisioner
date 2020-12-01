@@ -119,7 +119,7 @@ func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryI
 	logD.Info("creating ObjectBucket", "name", ob.Name)
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(ob)
+		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(context.TODO(), ob, metav1.CreateOptions{})
 		if errors.IsAlreadyExists(err) {
 			err = nil
 		} else if err != nil {
@@ -225,14 +225,14 @@ func releaseOBC(obc *v1alpha1.ObjectBucketClaim, c versioned.Interface) (err err
 		return nil
 	}
 	obcNsName := obc.Namespace + "/" + obc.Name
-	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(obc.Name, metav1.GetOptions{})
+	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(context.TODO(), obc.Name, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("unable to Get obc %q in order to remove finalizer: %v", obcNsName, err)
 	}
 	logD.Info("removing obc finalizer")
 	removeFinalizer(obc)
 
-	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
+	obc, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(context.TODO(), obc, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("unable to Update obc %q to reflect removed finalizer: %v", obcNsName, err)
 	}
@@ -253,13 +253,13 @@ func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error 
 
 	logD.Info("removing ObjectBucket finalizer", "name", ob.Name)
 	removeFinalizer(ob)
-	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(ob)
+	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(context.TODO(), ob, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
 
 	logD.Info("deleting ObjectBucket", "name", ob.Name)
-	err = c.ObjectbucketV1alpha1().ObjectBuckets().Delete(ob.Name, &metav1.DeleteOptions{})
+	err = c.ObjectbucketV1alpha1().ObjectBuckets().Delete(context.TODO(), ob.Name, metav1.DeleteOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			log.Error(err, "ObjectBucket vanished before we could delete it, skipping", "name", ob.Name)
@@ -275,7 +275,7 @@ func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryIn
 
 	logD.Info("updating", "obc", obc.Namespace+"/"+obc.Name)
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(obc)
+		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(context.TODO(), obc, metav1.UpdateOptions{})
 		return (err == nil), err
 	})
 	return
@@ -287,7 +287,7 @@ func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBuc
 	obc.Status.Phase = phase
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).UpdateStatus(obc)
+		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).UpdateStatus(context.TODO(), obc, metav1.UpdateOptions{})
 		return (err == nil), err
 	})
 	return
@@ -299,7 +299,7 @@ func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, p
 	ob.Status.Phase = phase
 
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(ob)
+		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(context.TODO(), ob, metav1.UpdateOptions{})
 		return err == nil, err
 	})
 	return

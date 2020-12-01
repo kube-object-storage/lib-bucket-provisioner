@@ -84,7 +84,7 @@ func claimForKey(key string, c versioned.Interface) (obc *v1alpha1.ObjectBucketC
 	if err != nil {
 		return nil, err
 	}
-	return c.ObjectbucketV1alpha1().ObjectBucketClaims(ns).Get(name, metav1.GetOptions{})
+	return c.ObjectbucketV1alpha1().ObjectBucketClaims(ns).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
 // Return true if this storage class is for a new bucket vs an existing bucket.

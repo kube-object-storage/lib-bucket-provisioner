@@ -17,6 +17,7 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -261,7 +262,8 @@ func (c *obcController) syncHandler(key string) error {
 	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
 	err = c.handleProvisionClaim(key, obc, class)
 
-	// If handleReconcile() errors, the request will be re-queued.  In the distant future, we will likely want some ignorable error types in order to skip re-queuing
+	// If the handler above errors, the request will be re-queued. In the distant future, we will
+	// likely want some ignorable error types in order to skip re-queuing
 	return err
 }
 
@@ -289,11 +291,54 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	// to control access to static buckets via RBAC rules on storage classes.
 	isDynamicProvisioning := isNewBucketByStorageClass(class)
 
+	bucketName := class.Parameters[v1alpha1.StorageClassBucket]
+	if isDynamicProvisioning {
+		bucketName, err = composeBucketName(obc)
+		if err != nil {
+			return fmt.Errorf("error composing bucket name: %v", err)
+		}
+	}
+	if len(bucketName) == 0 {
+		return fmt.Errorf("bucket name missing")
+	}
+
+	// Re-Get the claim in order to shorten the race condition where the claim was deleted after provisioning started
+	obc, err = claimForKey(key, c.libClientset)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return fmt.Errorf("OBC was lost before we could provision: %v", err)
+		}
+		return err
+	}
+
+	options := &api.BucketOptions{
+		ReclaimPolicy:     class.ReclaimPolicy,
+		BucketName:        bucketName,
+		ObjectBucketClaim: obc.DeepCopy(),
+		Parameters:        class.Parameters,
+	}
+
+	// Fill in basic necessary object bucket info
+	setBasicOBInfo := func() {
+		setObjectBucketName(ob, key)
+		ob.Spec.StorageClassName = obc.Spec.StorageClassName
+		if ob.Spec.ReclaimPolicy == nil || *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimPolicy("") {
+			// Do not blindly overwrite the reclaim policy. The provisioner might have reason to
+			// specify a reclaim policy that is  different from the storage class.
+			ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+		}
+		ob.SetLabels(c.provisionerLabels)
+	}
+
 	// Should an error be returned, attempt to clean up the object store and API servers by
 	// calling the appropriate provisioner method.  In cases where Provision() or Revoke()
 	// return an err, it's likely that the ob == nil, hindering cleanup.
 	defer func() {
 		if err != nil && ob != nil {
+			// If provisioning fails before basic OB info is applied, cleanup below can fail because
+			// provisioner methods might not have access to information (like StorageClassName)
+			// they need to properly clean up. Therefore, we must set basic OB info here.
+			setBasicOBInfo()
 			log.Info("cleaning up provisioning artifacts")
 			if /*greenfield*/ isDynamicProvisioning && !pErr.IsBucketExists(err) {
 				log.Info("deleting provisioned resources")
@@ -310,33 +355,6 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		}
 	}()
 
-	bucketName := class.Parameters[v1alpha1.StorageClassBucket]
-	if isDynamicProvisioning {
-		bucketName, err = composeBucketName(obc)
-		if err != nil {
-			return fmt.Errorf("error composing bucket name: %v", err)
-		}
-	}
-	if len(bucketName) == 0 {
-		return fmt.Errorf("bucket name missing")
-	}
-
-	// Re-Get the claim in order to shorten the race condition where the claim was deleted after Reconcile() started
-	obc, err = claimForKey(key, c.libClientset)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return fmt.Errorf("OBC was lost before we could provision: %v", err)
-		}
-		return err
-	}
-
-	options := &api.BucketOptions{
-		ReclaimPolicy:     class.ReclaimPolicy,
-		BucketName:        bucketName,
-		ObjectBucketClaim: obc.DeepCopy(),
-		Parameters:        class.Parameters,
-	}
-
 	verb := "provisioning"
 	if !isDynamicProvisioning {
 		verb = "granting access to"
@@ -351,7 +369,15 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	if err != nil {
 		return fmt.Errorf("error %s bucket: %v", verb, err)
 	} else if ob == (&v1alpha1.ObjectBucket{}) {
-		return fmt.Errorf("provisioner returned nil/empty object bucket")
+		return fmt.Errorf("provisioner returned empty object bucket")
+	}
+
+	// Fill in known information in the object bucket struct as soon as possible
+	setBasicOBInfo()
+	ob.SetFinalizers([]string{finalizer})
+	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
+	if err != nil {
+		return fmt.Errorf("error getting reference to OBC: %v", err)
 	}
 
 	// create Secret and ConfigMap
@@ -377,15 +403,8 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	}
 
 	// Create OB
-	// Note: do not move ob create/update calls before secret or vice versa.
-	//   spec.Authentication is lost after create/update, which break secret creation
-	setObjectBucketName(ob, key)
-	ob.Spec.StorageClassName = obc.Spec.StorageClassName
-	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
-	ob.Spec.ReclaimPolicy = options.ReclaimPolicy
-	ob.SetFinalizers([]string{finalizer})
-	ob.SetLabels(c.provisionerLabels)
-
+	// Note: do not move ob create/update calls before secret.
+	//   spec.Authentication is lost after create/update, which breaks secret creation
 	ob, err = createObjectBucket(
 		ob,
 		c.libClientset,
@@ -406,7 +425,8 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 
 	// update OBC
 	obc.Spec.ObjectBucketName = ob.Name
-	obc.Spec.BucketName = bucketName
+	// Do not set obc.Spec.BucketName here: (1) if user has it set, it should be as they set it
+	// (2) if generateBucketName is set, setting this will cause errors if provisioning runs again
 	obc, err = updateClaim(
 		c.libClientset,
 		obc,
@@ -549,7 +569,7 @@ func (c *obcController) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err e
 	clib := c.libClientset
 
 	logD.Info("getting OBC to set metadata fields")
-	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(obc.Name, metav1.GetOptions{})
+	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(context.TODO(), obc.Name, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("error getting obc: %v", err)
 	}
@@ -572,7 +592,7 @@ func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBuc
 	if err != nil {
 		return nil, err
 	}
-	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(name, metav1.GetOptions{})
+	ob, err := c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
