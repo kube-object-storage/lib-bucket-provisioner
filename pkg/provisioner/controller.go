@@ -311,6 +311,58 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return err
 	}
 
+	updateOnSuccess := func() error {
+		// In the case where the OB has been created and the operator crashed immediately after
+		// (before the OB phase could be updated), we should update the OB phase in addition to
+		// updating the OBC reference to the OB and the OBC's phase.
+		ob, err = updateObjectBucketPhase(
+			c.libClientset,
+			ob,
+			v1alpha1.ObjectBucketStatusPhaseBound,
+			defaultRetryBaseInterval,
+			defaultRetryTimeout)
+		if err != nil {
+			return fmt.Errorf("error updating OB %q's status to %q: %v", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
+		}
+		// update OBC
+		obc.Spec.ObjectBucketName = ob.Name
+		obc.Spec.BucketName = bucketName
+		obc, err = updateClaim(
+			c.libClientset,
+			obc,
+			defaultRetryBaseInterval,
+			defaultRetryTimeout)
+		if err != nil {
+			return fmt.Errorf("error updating OBC: %v", err)
+		}
+		obc, err = updateObjectBucketClaimPhase(
+			c.libClientset,
+			obc,
+			v1alpha1.ObjectBucketClaimStatusPhaseBound,
+			defaultRetryBaseInterval,
+			defaultRetryTimeout)
+		if err != nil {
+			return fmt.Errorf("error updating OBC %q's status to: %v", v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
+		}
+		return nil
+	}
+
+	// recover from degraded state where provisioning is happening again on a completed obc
+	ob, err = getObjectBucketFromClaimKey(key, obc, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error getting OB for OBC %q: %v", key, err)
+	}
+	if ob != nil {
+		err = updateOnSuccess()
+		if err != nil {
+			return fmt.Errorf("error marking OB %q as bound to OBC %q: %v", ob.Name, key, err)
+		}
+		// Do not do any more provisioning; the bucket is already provisioned and merely
+		// needed its info re-updated to reference the claim and vice versa
+		logD.Info("(re-)bound OB to OBC successfully", "OB", ob.Name)
+		return nil
+	}
+
 	options := &api.BucketOptions{
 		ReclaimPolicy:     class.ReclaimPolicy,
 		BucketName:        bucketName,
@@ -380,7 +432,18 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return fmt.Errorf("error getting reference to OBC: %v", err)
 	}
 
-	// create Secret and ConfigMap
+	// Create auth Secret and bucket info ConfigMap
+	// If the operator crashes before the OB is created, provisioning will happen again including a
+	// call to Provision()/Grant(), and a Secret and/or ConfigMap might exist from the previous
+	// provisioning attempt. Provision() isn't guaranteed to give the same credentials or bucket
+	// each time, so if the Secret/ConfigMap already exists, delete the old one and re-create it
+	// with the latest info.
+
+	err = deleteExistingSecretAndConfigMapIfExist(obc, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("failed to delete existing Secret and/or ConfigMap for OBC %q: %v", obc.Namespace+"/"+obc.Name, err)
+	}
+
 	secret, err = createSecret(
 		obc,
 		ob.Spec.Authentication,
@@ -391,6 +454,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	if err != nil {
 		return fmt.Errorf("error creating secret for OBC: %v", err)
 	}
+
 	configMap, err = createConfigMap(
 		obc,
 		ob.Spec.Endpoint,
@@ -413,36 +477,10 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	if err != nil {
 		return fmt.Errorf("error creating OB %q: %v", ob.Name, err)
 	}
-	ob, err = updateObjectBucketPhase(
-		c.libClientset,
-		ob,
-		v1alpha1.ObjectBucketStatusPhaseBound,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("error updating OB %q's status to %q: %v", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
-	}
 
-	// update OBC
-	obc.Spec.ObjectBucketName = ob.Name
-	// Do not set obc.Spec.BucketName here: (1) if user has it set, it should be as they set it
-	// (2) if generateBucketName is set, setting this will cause errors if provisioning runs again
-	obc, err = updateClaim(
-		c.libClientset,
-		obc,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
+	err = updateOnSuccess()
 	if err != nil {
-		return fmt.Errorf("error updating OBC: %v", err)
-	}
-	obc, err = updateObjectBucketClaimPhase(
-		c.libClientset,
-		obc,
-		v1alpha1.ObjectBucketClaimStatusPhaseBound,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("error updating OBC %q's status to: %v", v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
+		return fmt.Errorf("error marking new OB %q as bound to OBC %q: %v", ob.Name, key, err)
 	}
 
 	log.Info("provisioning succeeded")
