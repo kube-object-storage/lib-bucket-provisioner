@@ -302,13 +302,20 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return fmt.Errorf("bucket name missing")
 	}
 
-	// Re-Get the claim in order to shorten the race condition where the claim was deleted after provisioning started
-	obc, err = claimForKey(key, c.libClientset)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return fmt.Errorf("OBC was lost before we could provision: %v", err)
+	// In the case where a bucket name is being generated, generate the name and store it in the OBC
+	// spec before doing any Provisioning so that any crashes encountered in this code will not
+	// result in multiple buckets being generated for the same OBC. bucketName takes precedence over
+	// generateBucketName if both are present.
+	if obc.Spec.BucketName == "" {
+		obc.Spec.BucketName = bucketName
+		obc, err = updateClaim(
+			c.libClientset,
+			obc,
+			defaultRetryBaseInterval,
+			defaultRetryTimeout)
+		if err != nil {
+			return fmt.Errorf("error updating OBC %q with bucket name: %v", key, err)
 		}
-		return err
 	}
 
 	updateOnSuccess := func() error {
