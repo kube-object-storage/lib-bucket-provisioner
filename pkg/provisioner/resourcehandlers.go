@@ -66,7 +66,7 @@ func newBucketConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, 
 
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       obc.Name,
+			Name:       composeConfigMapName(obc),
 			Namespace:  obc.Namespace,
 			Finalizers: []string{finalizer},
 			Labels:     labels,
@@ -99,7 +99,7 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       obc.Name,
+			Name:       composeSecretName(obc),
 			Namespace:  obc.Namespace,
 			Finalizers: []string{finalizer},
 			Labels:     labels,
@@ -129,6 +129,55 @@ func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryI
 		return (err == nil), err
 	})
 	return
+}
+
+func updateObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
+	logD.Info("updating ObjectBucket", "name", ob.Name)
+	result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Update(context.TODO(), ob, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result, err
+}
+
+func getObjectBucketFromClaimKey(key string, obc *v1alpha1.ObjectBucketClaim, c versioned.Interface, retryInterval, retryTimeout time.Duration) (ob *v1alpha1.ObjectBucket, err error) {
+	obName, err := objectBucketNameFromClaimKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	logD.Info("seeing if OB for OBC exists", "checking for OB name", obName)
+	ob, err = c.ObjectbucketV1alpha1().ObjectBuckets().Get(context.TODO(), obName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Not found is a valid exit here which returns no error and a nil result
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if bucketIsOwnedByClaim(obc, ob) {
+		logD.Info("found OB belonging to this OBC", "OB", ob.Name)
+		return ob, err
+	}
+
+	emptyRef := corev1.ObjectReference{}
+	if ob.Spec.ClaimRef == nil || *ob.Spec.ClaimRef == emptyRef {
+		// If the CRD validation for the OB improperly specifies the object reference field, it will
+		// be missing. Do our best to recover from this case gracefully.
+		logD.Info("found OB matching OBC, but the OB ClaimRef is empty. binding OB to OBC", "OB", ob.Name)
+		ob.Spec.ClaimRef, err = claimRefForKey(key, c)
+		if err != nil {
+			return nil, fmt.Errorf("error generating OB %q's reference to OBC: %v", ob.Name, err)
+		}
+		ob, err = updateObjectBucket(ob, c, defaultRetryBaseInterval, defaultRetryTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("error updating OB %q with assumed claim ref: %v", ob.Name, err)
+		}
+		return ob, err
+	}
+
+	return nil, fmt.Errorf("found OB %q not owned by OBC %q, likely an artifact from a previous OBC that did not get cleaned up, user must delete the OB in order to allow OBC provisioning to continue", ob.Name, key)
 }
 
 func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, labels map[string]string, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
@@ -174,6 +223,137 @@ func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, lab
 		return true, nil
 	})
 	return configMap, err
+}
+
+func deleteExistingSecretAndConfigMapIfExist(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
+
+	secret, err := getExistingSecret(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error checking for existing OBC credentials Secret: %v", err)
+	}
+	if secret != nil {
+		if !objectIsOwnedByClaim(obc, secret.OwnerReferences) {
+			return fmt.Errorf("found OBC credentials Secret %q not owned by OBC, assuming this is a user-created resource, user must delete the Secret in order to allow OBC provisioning to continue", secret.Name)
+		}
+		logD.Info("found OBC credentials Secret owned by OBC, deleting and re-creating")
+		err = deleteSecretAndWait(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
+		if err != nil {
+			return fmt.Errorf("failed to delete existing OBC credentials Secret in order to re-create: %v", err)
+		}
+	}
+
+	configMap, err := getExistingConfigMap(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
+	if err != nil {
+		return fmt.Errorf("error checking for existing OBC bucket info ConfigMap: %v", err)
+	}
+	if configMap != nil {
+		if !objectIsOwnedByClaim(obc, configMap.OwnerReferences) {
+			return fmt.Errorf("found OBC bucket info ConfigMap %q not owned by OBC, assuming this is a user-created resource, user must delete the ConfigMap in order to allow OBC provisioning to continue", configMap.Name)
+		}
+		logD.Info("found OBC bucket info ConfigMap owned by OBC, deleting and re-creating")
+		err = deleteConfigMapAndWait(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
+		if err != nil {
+			return fmt.Errorf("failed to delete existing OBC bucket info ConfigMap in order to re-create: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func getExistingSecret(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (secret *corev1.Secret, err error) {
+	secret, err = c.CoreV1().Secrets(obc.Namespace).Get(context.TODO(), composeSecretName(obc), metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Not found is valid here which returns no error and a nil secret
+			return nil, nil
+		}
+		return nil, err
+	}
+	return secret, err
+}
+
+func getExistingConfigMap(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (configMap *corev1.ConfigMap, err error) {
+	configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Get(context.TODO(), composeConfigMapName(obc), metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Not found is valid here which returns no error and a nil configMap
+			return nil, nil
+		}
+		return nil, err
+	}
+	return configMap, err
+}
+
+func deleteSecretAndWait(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
+	name := composeSecretName(obc)
+	logD.Info("deleting secret", "secret name", name)
+
+	secret, err := c.CoreV1().Secrets(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Already deleted
+			return nil
+		}
+		return fmt.Errorf("failed to get secret in order to delete it: %v", err)
+	}
+	err = releaseSecret(secret, c)
+	if err != nil {
+		return fmt.Errorf("failed to release secret for deletion: %v", err)
+	}
+	err = c.CoreV1().Secrets(obc.Namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err != nil {
+		return err
+	}
+	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
+		_, err = c.CoreV1().Secrets(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// Is Deleted
+				err = nil
+				return true, nil
+			}
+			// for other errors, give the opportunity to retry until timeout
+			return false, nil
+		}
+		return false, nil // still exists
+	})
+	return err
+}
+
+func deleteConfigMapAndWait(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
+	name := composeConfigMapName(obc)
+	logD.Info("deleting configmap", "configmap name", name)
+
+	configMap, err := c.CoreV1().ConfigMaps(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			// Already deleted
+			return nil
+		}
+		return fmt.Errorf("failed to get ConfigMap in order to delete it: %v", err)
+	}
+	err = releaseConfigMap(configMap, c)
+	if err != nil {
+		return fmt.Errorf("failed to release ConfigMap for deletion: %v", err)
+	}
+	err = c.CoreV1().ConfigMaps(obc.Namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err != nil {
+		return err
+	}
+	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
+		_, err = c.CoreV1().ConfigMaps(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// Is Deleted
+				err = nil
+				return true, nil
+			}
+			// for other errors, give the opportunity to retry until timeout
+			return false, nil
+		}
+		return false, nil // still exists
+	})
+	return err
 }
 
 // Only the finalizer needs to be removed. The CM will be garbage collected since its

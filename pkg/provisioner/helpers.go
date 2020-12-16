@@ -60,9 +60,35 @@ func makeOwnerReference(claim *v1alpha1.ObjectBucketClaim) metav1.OwnerReference
 	}
 }
 
+// return true if owner refs report being owned by the obc, false otherwise
+func objectIsOwnedByClaim(obc *v1alpha1.ObjectBucketClaim, ownerRefs []metav1.OwnerReference) bool {
+	for _, ref := range ownerRefs {
+		// UID can change if k8s rebuilds its object tree
+		// Kind and Name should be enough info to determine ownership conclusively
+		if ref.Kind == v1alpha1.ObjectBucketClaimGVK().Kind && ref.Name == obc.Name {
+			return true
+		}
+	}
+	return false
+}
+
+func bucketIsOwnedByClaim(obc *v1alpha1.ObjectBucketClaim, ob *v1alpha1.ObjectBucket) bool {
+	ref := ob.Spec.ClaimRef
+	emptyRef := corev1.ObjectReference{}
+	if ref == nil || *ref == emptyRef {
+		return false
+	}
+	// UID can change if k8s rebuilds its object tree
+	// Kind, Namespace, and Name should be enough info to determine ownership conclusively
+	if ref.Kind == v1alpha1.ObjectBucketClaimGVK().Kind && ref.Namespace == obc.Namespace && ref.Name == obc.Name {
+		return true
+	}
+	return false
+}
+
 func shouldProvision(obc *v1alpha1.ObjectBucketClaim) bool {
 	logD.Info("checking OBC for OB name, this indicates provisioning is complete", obc.Name)
-	if obc.Spec.ObjectBucketName != "" {
+	if obc.Spec.ObjectBucketName != "" && obc.Status.Phase == v1alpha1.ObjectBucketClaimStatusPhaseBound {
 		log.Info("provisioning already completed", "ObjectBucket", obc.Spec.ObjectBucketName)
 		return false
 	}
@@ -101,6 +127,14 @@ func isNewBucketByObjectBucket(c kubernetes.Interface, ob *v1alpha1.ObjectBucket
 		return false
 	}
 	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
+}
+
+func composeConfigMapName(obc *v1alpha1.ObjectBucketClaim) string {
+	return obc.Name
+}
+
+func composeSecretName(obc *v1alpha1.ObjectBucketClaim) string {
+	return obc.Name
 }
 
 func configMapForClaimKey(key string, c kubernetes.Interface) (*corev1.ConfigMap, error) {
@@ -148,9 +182,6 @@ func objectBucketNameFromClaimKey(key string) (string, error) {
 func composeBucketName(obc *v1alpha1.ObjectBucketClaim) (string, error) {
 	if obc.Spec.BucketName == "" && obc.Spec.GenerateBucketName == "" {
 		return "", fmt.Errorf("expected either bucketName or generateBucketName defined")
-	}
-	if obc.Spec.BucketName != "" && obc.Spec.GenerateBucketName != "" {
-		return "", fmt.Errorf("cannot define both bucketName and generateBucketName")
 	}
 	bucketName := obc.Spec.BucketName
 	if bucketName == "" {
