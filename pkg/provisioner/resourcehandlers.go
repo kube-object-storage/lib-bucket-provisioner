@@ -118,24 +118,23 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
 	logD.Info("creating ObjectBucket", "name", ob.Name)
 
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(context.TODO(), ob, metav1.CreateOptions{})
+	result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(context.TODO(), ob, metav1.CreateOptions{})
+	if err != nil {
 		if errors.IsAlreadyExists(err) {
-			err = nil
-		} else if err != nil {
-			// could be intermittent api error
-			log.Error(err, "probably not fatal, retrying")
+			// return input ob here since result is nil on error returns
+			return ob, nil
 		}
-		return (err == nil), err
-	})
-	return
+		return ob, fmt.Errorf("failed to create OB %s: %v", ob.Name, err)
+	}
+	return result, err
 }
 
-func updateObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
+func updateObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) (result *v1alpha1.ObjectBucket, err error) {
 	logD.Info("updating ObjectBucket", "name", ob.Name)
 	result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Update(context.TODO(), ob, metav1.UpdateOptions{})
 	if err != nil {
-		return nil, err
+		// return input ob here since result is nil on error returns
+		return ob, fmt.Errorf("failed to update OB %s: %v", ob.Name, err)
 	}
 	return result, err
 }
@@ -170,7 +169,7 @@ func getObjectBucketFromClaimKey(key string, obc *v1alpha1.ObjectBucketClaim, c 
 		if err != nil {
 			return nil, fmt.Errorf("error generating OB %q's reference to OBC: %v", ob.Name, err)
 		}
-		ob, err = updateObjectBucket(ob, c, defaultRetryBaseInterval, defaultRetryTimeout)
+		ob, err = updateObjectBucket(ob, c)
 		if err != nil {
 			return nil, fmt.Errorf("error updating OB %q with assumed claim ref: %v", ob.Name, err)
 		}
@@ -433,7 +432,7 @@ func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error 
 
 	logD.Info("removing ObjectBucket finalizer", "name", ob.Name)
 	removeFinalizer(ob)
-	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(context.TODO(), ob, metav1.UpdateOptions{})
+	_, err := c.ObjectbucketV1alpha1().ObjectBuckets().Update(context.TODO(), ob, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -451,36 +450,45 @@ func deleteObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) error 
 	return nil
 }
 
-func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucketClaim, err error) {
-
+func updateClaim(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim) (result *v1alpha1.ObjectBucketClaim, err error) {
 	logD.Info("updating", "obc", obc.Namespace+"/"+obc.Name)
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(context.TODO(), obc, metav1.UpdateOptions{})
-		return (err == nil), err
-	})
-	return
+	result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Update(context.TODO(), obc, metav1.UpdateOptions{})
+	if err != nil {
+		// return input obc here since result is nil on error returns
+		return obc, fmt.Errorf("failed to update OBC %s/%s: %v", obc.Namespace, obc.Name, err)
+	}
+	return result, err
 }
 
-func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucketClaim, err error) {
+func updateObjectBucketClaimPhase(c versioned.Interface, obc *v1alpha1.ObjectBucketClaim, phase v1alpha1.ObjectBucketClaimStatusPhase) (result *v1alpha1.ObjectBucketClaim, err error) {
 	logD.Info("updating status:", "obc", obc.Namespace+"/"+obc.Name, "old status",
 		obc.Status.Phase, "new status", phase)
-	obc.Status.Phase = phase
+	// Do not make changes directly to the obc used as input. If the update fails, we should return
+	// the obc given as input as it was given so code that comes after can't assume obc is at the
+	// new phase.
+	updateOBC := obc.DeepCopy()
+	updateOBC.Status.Phase = phase
 
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).UpdateStatus(context.TODO(), obc, metav1.UpdateOptions{})
-		return (err == nil), err
-	})
-	return
+	result, err = c.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).UpdateStatus(context.TODO(), updateOBC, metav1.UpdateOptions{})
+	if err != nil {
+		// return input obc here since result is nil on error returns
+		return obc, fmt.Errorf("failed to update OBC %s/%s phase to %q: %v", obc.Namespace, obc.Name, phase, err)
+	}
+	return result, err
 }
 
-func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, phase v1alpha1.ObjectBucketStatusPhase, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
-	logD.Info("updating status:", "ob", ob.Name, "old status", ob.Status.Phase,
-		"new status", phase)
-	ob.Status.Phase = phase
+func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, phase v1alpha1.ObjectBucketStatusPhase) (result *v1alpha1.ObjectBucket, err error) {
+	logD.Info("updating status:", "ob", ob.Name, "old status", ob.Status.Phase, "new status", phase)
+	// Do not make changes directly to the ob used as input. If the update fails, we should return
+	// the ob given as input as it was given so code that comes after can't assume ob is at the new
+	// phase.
+	updateOB := ob.DeepCopy()
+	updateOB.Status.Phase = phase
 
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (bool, error) {
-		result, err = c.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(context.TODO(), ob, metav1.UpdateOptions{})
-		return err == nil, err
-	})
-	return
+	result, err = c.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(context.TODO(), updateOB, metav1.UpdateOptions{})
+	if err != nil {
+		// return input ob here since result is nil on error returns
+		return ob, fmt.Errorf("failed to update OB %s phase to %q: %v", ob.Name, phase, err)
+	}
+	return result, err
 }
