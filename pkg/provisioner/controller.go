@@ -252,9 +252,7 @@ func (c *obcController) syncHandler(key string) error {
 	obc, err = updateObjectBucketClaimPhase(
 		c.libClientset,
 		obc,
-		v1alpha1.ObjectBucketClaimStatusPhasePending,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
+		v1alpha1.ObjectBucketClaimStatusPhasePending)
 	if err != nil {
 		return fmt.Errorf("error updating OBC status: %s", err)
 	}
@@ -310,9 +308,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		obc.Spec.BucketName = bucketName
 		obc, err = updateClaim(
 			c.libClientset,
-			obc,
-			defaultRetryBaseInterval,
-			defaultRetryTimeout)
+			obc)
 		if err != nil {
 			return fmt.Errorf("error updating OBC %q with bucket name: %v", key, err)
 		}
@@ -325,9 +321,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		ob, err = updateObjectBucketPhase(
 			c.libClientset,
 			ob,
-			v1alpha1.ObjectBucketStatusPhaseBound,
-			defaultRetryBaseInterval,
-			defaultRetryTimeout)
+			v1alpha1.ObjectBucketStatusPhaseBound)
 		if err != nil {
 			return fmt.Errorf("error updating OB %q's status to %q: %v", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
 		}
@@ -336,18 +330,14 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		obc.Spec.BucketName = bucketName
 		obc, err = updateClaim(
 			c.libClientset,
-			obc,
-			defaultRetryBaseInterval,
-			defaultRetryTimeout)
+			obc)
 		if err != nil {
 			return fmt.Errorf("error updating OBC: %v", err)
 		}
 		obc, err = updateObjectBucketClaimPhase(
 			c.libClientset,
 			obc,
-			v1alpha1.ObjectBucketClaimStatusPhaseBound,
-			defaultRetryBaseInterval,
-			defaultRetryTimeout)
+			v1alpha1.ObjectBucketClaimStatusPhaseBound)
 		if err != nil {
 			return fmt.Errorf("error updating OBC %q's status to: %v", v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
 		}
@@ -377,27 +367,11 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		Parameters:        class.Parameters,
 	}
 
-	// Fill in basic necessary object bucket info
-	setBasicOBInfo := func() {
-		setObjectBucketName(ob, key)
-		ob.Spec.StorageClassName = obc.Spec.StorageClassName
-		if ob.Spec.ReclaimPolicy == nil || *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimPolicy("") {
-			// Do not blindly overwrite the reclaim policy. The provisioner might have reason to
-			// specify a reclaim policy that is  different from the storage class.
-			ob.Spec.ReclaimPolicy = options.ReclaimPolicy
-		}
-		ob.SetLabels(c.provisionerLabels)
-	}
-
 	// Should an error be returned, attempt to clean up the object store and API servers by
 	// calling the appropriate provisioner method.  In cases where Provision() or Revoke()
 	// return an err, it's likely that the ob == nil, hindering cleanup.
 	defer func() {
 		if err != nil && ob != nil {
-			// If provisioning fails before basic OB info is applied, cleanup below can fail because
-			// provisioner methods might not have access to information (like StorageClassName)
-			// they need to properly clean up. Therefore, we must set basic OB info here.
-			setBasicOBInfo()
 			log.Info("cleaning up provisioning artifacts")
 			if /*greenfield*/ isDynamicProvisioning && !pErr.IsBucketExists(err) {
 				log.Info("deleting provisioned resources")
@@ -425,14 +399,33 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	} else {
 		ob, err = c.provisioner.Grant(options)
 	}
+	// Record whether the provisioner returned an empty object bucket for error handling use later
+	emptyBucket := (ob == nil || ob == (&v1alpha1.ObjectBucket{}))
+
+	// Set information about the OB as soon as possible, even before handling errors so that the
+	// deferred cleanup function is not missing critical information needed to clean up.
+	// More note on above: can't check if provisioner returned empty OB after we set OB info below.
+	// The returned OB should only be nil if there is also an error with provisioning; in such a
+	// case, the provisioner should have cleaned up after itself already so we do not need to set
+	// info for OB cleanup.
+	if ob != nil {
+		setObjectBucketName(ob, key)
+		ob.Spec.StorageClassName = obc.Spec.StorageClassName
+		if ob.Spec.ReclaimPolicy == nil || *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimPolicy("") {
+			// Do not blindly overwrite the reclaim policy. The provisioner might have reason to
+			// specify a reclaim policy that is  different from the storage class.
+			ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+		}
+		ob.SetLabels(c.provisionerLabels)
+	}
+
 	if err != nil {
 		return fmt.Errorf("error %s bucket: %v", verb, err)
-	} else if ob == (&v1alpha1.ObjectBucket{}) {
+	} else if emptyBucket {
 		return fmt.Errorf("provisioner returned empty object bucket")
 	}
 
-	// Fill in known information in the object bucket struct as soon as possible
-	setBasicOBInfo()
+	// This info set on the OB isn't critical for cleanup
 	ob.SetFinalizers([]string{finalizer})
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	if err != nil {
@@ -521,7 +514,7 @@ func (c *obcController) handleDeleteClaim(key string, obc *v1alpha1.ObjectBucket
 
 	// call Delete or Revoke and then delete generated k8s resources
 	// Note: if Delete or Revoke return err then we do not try to delete resources
-	ob, err := updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased, defaultRetryBaseInterval, defaultRetryTimeout)
+	ob, err := updateObjectBucketPhase(c.libClientset, ob, v1alpha1.ObjectBucketClaimStatusPhaseReleased)
 	if err != nil {
 		return err
 	}
@@ -623,7 +616,7 @@ func (c *obcController) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err e
 	obc.SetLabels(c.provisionerLabels)
 
 	logD.Info("updating OBC metadata")
-	obc, err = updateClaim(clib, obc, defaultRetryBaseInterval, defaultRetryTimeout)
+	obc, err = updateClaim(clib, obc)
 	if err != nil {
 		return fmt.Errorf("error configuring obc metadata: %v", err)
 	}
