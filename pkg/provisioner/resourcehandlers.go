@@ -235,7 +235,7 @@ func deleteExistingSecretAndConfigMapIfExist(obc *v1alpha1.ObjectBucketClaim, c 
 			return fmt.Errorf("found OBC credentials Secret %q not owned by OBC, assuming this is a user-created resource, user must delete the Secret in order to allow OBC provisioning to continue", secret.Name)
 		}
 		logD.Info("found OBC credentials Secret owned by OBC, deleting and re-creating")
-		err = deleteSecretAndWait(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
+		err = deleteSecretAndWait(secret, c, defaultRetryBaseInterval, defaultRetryTimeout)
 		if err != nil {
 			return fmt.Errorf("failed to delete existing OBC credentials Secret in order to re-create: %v", err)
 		}
@@ -250,7 +250,7 @@ func deleteExistingSecretAndConfigMapIfExist(obc *v1alpha1.ObjectBucketClaim, c 
 			return fmt.Errorf("found OBC bucket info ConfigMap %q not owned by OBC, assuming this is a user-created resource, user must delete the ConfigMap in order to allow OBC provisioning to continue", configMap.Name)
 		}
 		logD.Info("found OBC bucket info ConfigMap owned by OBC, deleting and re-creating")
-		err = deleteConfigMapAndWait(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
+		err = deleteConfigMapAndWait(configMap, c, defaultRetryBaseInterval, defaultRetryTimeout)
 		if err != nil {
 			return fmt.Errorf("failed to delete existing OBC bucket info ConfigMap in order to re-create: %v", err)
 		}
@@ -283,28 +283,19 @@ func getExistingConfigMap(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interfac
 	return configMap, err
 }
 
-func deleteSecretAndWait(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
-	name := composeSecretName(obc)
-	logD.Info("deleting secret", "secret name", name)
+func deleteSecretAndWait(sec *corev1.Secret, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
+	logD.Info("deleting secret", "secret name", sec.Name)
 
-	secret, err := c.CoreV1().Secrets(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Already deleted
-			return nil
-		}
-		return fmt.Errorf("failed to get secret in order to delete it: %v", err)
-	}
-	err = releaseSecret(secret, c)
+	err := releaseSecret(sec, c)
 	if err != nil {
 		return fmt.Errorf("failed to release secret for deletion: %v", err)
 	}
-	err = c.CoreV1().Secrets(obc.Namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err = c.CoreV1().Secrets(sec.Namespace).Delete(context.TODO(), sec.Name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		_, err = c.CoreV1().Secrets(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		_, err = c.CoreV1().Secrets(sec.Namespace).Get(context.TODO(), sec.Name, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				// Is Deleted
@@ -319,28 +310,19 @@ func deleteSecretAndWait(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface
 	return err
 }
 
-func deleteConfigMapAndWait(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
-	name := composeConfigMapName(obc)
-	logD.Info("deleting configmap", "configmap name", name)
+func deleteConfigMapAndWait(cm *corev1.ConfigMap, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
+	logD.Info("deleting configmap", "configmap name", cm.Name)
 
-	configMap, err := c.CoreV1().ConfigMaps(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Already deleted
-			return nil
-		}
-		return fmt.Errorf("failed to get ConfigMap in order to delete it: %v", err)
-	}
-	err = releaseConfigMap(configMap, c)
+	err := releaseConfigMap(cm, c)
 	if err != nil {
 		return fmt.Errorf("failed to release ConfigMap for deletion: %v", err)
 	}
-	err = c.CoreV1().ConfigMaps(obc.Namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err = c.CoreV1().ConfigMaps(cm.Namespace).Delete(context.TODO(), cm.Name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
 	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		_, err = c.CoreV1().ConfigMaps(obc.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		_, err = c.CoreV1().ConfigMaps(cm.Namespace).Get(context.TODO(), cm.Name, metav1.GetOptions{})
 		if err != nil {
 			if errors.IsNotFound(err) {
 				// Is Deleted
