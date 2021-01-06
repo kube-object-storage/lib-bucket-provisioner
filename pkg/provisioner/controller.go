@@ -25,6 +25,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -400,7 +401,9 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		ob, err = c.provisioner.Grant(options)
 	}
 	// Record whether the provisioner returned an empty object bucket for error handling use later
-	emptyBucket := (ob == nil || ob == (&v1alpha1.ObjectBucket{}))
+	// The k8s code generator does not generate equality methods, and golang's native
+	// reflect.DeepEqual panics at unexported k8s struct fields, so must use apiequality lib.
+	emptyBucket := (ob == nil || apiequality.Semantic.DeepEqual(*ob, v1alpha1.ObjectBucket{}))
 
 	// Set information about the OB as soon as possible, even before handling errors so that the
 	// deferred cleanup function is not missing critical information needed to clean up.
