@@ -280,7 +280,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	)
 
 	// set finalizer in OBC so that resources cleaned up is controlled when the obc is deleted
-	if err = c.setOBCMetaFields(obc); err != nil {
+	if obc, err = c.setOBCMetaFields(obc); err != nil {
 		return err
 	}
 
@@ -419,7 +419,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 			// specify a reclaim policy that is  different from the storage class.
 			ob.Spec.ReclaimPolicy = options.ReclaimPolicy
 		}
-		ob.SetLabels(c.provisionerLabels)
+		addLabels(ob, c.provisionerLabels)
 	}
 
 	if err != nil {
@@ -429,7 +429,7 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	}
 
 	// This info set on the OB isn't critical for cleanup
-	ob.SetFinalizers([]string{finalizer})
+	addFinalizers(ob, []string{finalizer})
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	if err != nil {
 		return fmt.Errorf("error getting reference to OBC: %v", err)
@@ -606,25 +606,24 @@ func (c *obcController) deleteResources(ob *v1alpha1.ObjectBucket, cm *corev1.Co
 }
 
 // Add finalizer and labels to the OBC.
-func (c *obcController) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (err error) {
+func (c *obcController) setOBCMetaFields(obc *v1alpha1.ObjectBucketClaim) (*v1alpha1.ObjectBucketClaim, error) {
 	clib := c.libClientset
 
-	logD.Info("getting OBC to set metadata fields")
-	obc, err = clib.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Get(context.TODO(), obc.Name, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("error getting obc: %v", err)
-	}
+	// Do not make changes directly to the obc used as input. If the update fails, we should return
+	// the obc given as input as it was given so code that comes after can't assume obc is at the
+	// new phase.
+	updateOBC := obc.DeepCopy()
 
-	obc.SetFinalizers([]string{finalizer})
-	obc.SetLabels(c.provisionerLabels)
+	addFinalizers(updateOBC, []string{finalizer})
+	addLabels(updateOBC, c.provisionerLabels)
 
 	logD.Info("updating OBC metadata")
-	obc, err = updateClaim(clib, obc)
+	obcUpdated, err := updateClaim(clib, updateOBC)
 	if err != nil {
-		return fmt.Errorf("error configuring obc metadata: %v", err)
+		return obc, fmt.Errorf("error configuring obc metadata: %v", err)
 	}
 
-	return nil
+	return obcUpdated, nil
 }
 
 func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBucket, error) {
