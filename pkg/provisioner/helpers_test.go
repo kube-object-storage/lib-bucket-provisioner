@@ -158,7 +158,7 @@ func Test_objectBucketClaimReconciler_claimFromKey(t *testing.T) {
 		var err error
 
 		if tt.want != nil {
-			if _, err = ec.ObjectbucketV1alpha1().ObjectBucketClaims(tt.want.Namespace).Create(tt.want); err != nil {
+			if _, err = ec.ObjectbucketV1alpha1().ObjectBucketClaims(tt.want.Namespace).Create(context.TODO(), tt.want, metav1.CreateOptions{}); err != nil {
 				t.Errorf("error precreating object: %v", err)
 			}
 		}
@@ -269,7 +269,7 @@ func TestStorageClassForClaim(t *testing.T) {
 			obc := tt.args.obc
 
 			if obc != nil {
-				if obc, err = tt.args.extClient.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Create(obc); err != nil {
+				if obc, err = tt.args.extClient.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Create(context.TODO(), obc, metav1.CreateOptions{}); err != nil {
 					t.Errorf("error pre-creating OBC: %v", err)
 				}
 			}
