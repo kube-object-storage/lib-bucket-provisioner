@@ -158,7 +158,7 @@ func Test_objectBucketClaimReconciler_claimFromKey(t *testing.T) {
 		var err error
 
 		if tt.want != nil {
-			if _, err = ec.ObjectbucketV1alpha1().ObjectBucketClaims(tt.want.Namespace).Create(tt.want); err != nil {
+			if _, err = ec.ObjectbucketV1alpha1().ObjectBucketClaims(tt.want.Namespace).Create(context.TODO(), tt.want, metav1.CreateOptions{}); err != nil {
 				t.Errorf("error precreating object: %v", err)
 			}
 		}
@@ -269,7 +269,7 @@ func TestStorageClassForClaim(t *testing.T) {
 			obc := tt.args.obc
 
 			if obc != nil {
-				if obc, err = tt.args.extClient.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Create(obc); err != nil {
+				if obc, err = tt.args.extClient.ObjectbucketV1alpha1().ObjectBucketClaims(obc.Namespace).Create(context.TODO(), obc, metav1.CreateOptions{}); err != nil {
 					t.Errorf("error pre-creating OBC: %v", err)
 				}
 			}
@@ -336,6 +336,97 @@ func TestGenerateBucketName(t *testing.T) {
 				t.Errorf("error matching pattern: %v", err)
 			} else if !match {
 				t.Errorf("want match: %v, got %v", pattern, got)
+			}
+		})
+	}
+}
+
+func TestAddFinalizers(t *testing.T) {
+	type args struct {
+		obj           *v1alpha1.ObjectBucketClaim
+		newFinalizers []string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		{
+			name: "adds finalizers to obj without finalizers",
+			args: args{
+				&v1alpha1.ObjectBucketClaim{},
+				[]string{"finalizer"},
+			},
+			want: []string{"finalizer"},
+		},
+		{
+			name: "adds finalizers to obj with empty finalizers",
+			args: args{
+				&v1alpha1.ObjectBucketClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{},
+					},
+				},
+				[]string{"finalizer"},
+			},
+			want: []string{"finalizer"},
+		},
+		{
+			name: "adds finalizers to obj with a single matching and non-matching finalizer",
+			args: args{
+				&v1alpha1.ObjectBucketClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{
+							"matching",
+						},
+					},
+				},
+				[]string{
+					"matching",
+					"non-matching",
+				},
+			},
+			want: []string{
+				"matching",
+				"non-matching",
+			},
+		},
+		{
+			name: "adds finalizers to obj with multiple finalizers",
+			args: args{
+				&v1alpha1.ObjectBucketClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Finalizers: []string{
+							"existing1",
+							"existing2",
+						},
+					},
+				},
+				[]string{
+					"new1",
+					"new2",
+				},
+			},
+			want: []string{
+				"existing1",
+				"existing2",
+				"new1",
+				"new2",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addFinalizers(tt.args.obj, tt.args.newFinalizers)
+			finalizers := tt.args.obj.GetFinalizers()
+			if len(tt.want) != len(finalizers) {
+				t.Errorf("wanted len == %d, got %d", len(tt.want), len(finalizers))
+			}
+			for i, v := range finalizers {
+				if tt.want[i] != v {
+					t.Errorf("wanted finalizers == %v, got %v", tt.want, finalizers)
+				}
 			}
 		})
 	}

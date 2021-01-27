@@ -236,6 +236,35 @@ func storageClassForObjectBucket(ob *v1alpha1.ObjectBucket, c kubernetes.Interfa
 	return class, nil
 }
 
+func addLabels(obj metav1.Object, newLabels map[string]string) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	for k, v1 := range newLabels {
+		if v2, ok := labels[k]; ok && v1 != v2 {
+			log.Info("key already exists in labels", k, v2, "overwritten by", v1)
+		}
+		labels[k] = v1
+	}
+	obj.SetLabels(labels)
+}
+
+func addFinalizers(obj metav1.Object, newFilalizers []string) {
+	finalizers := obj.GetFinalizers()
+	finalizerMap := make(map[string]struct{})
+	for _, f := range finalizers {
+		finalizerMap[f] = struct{}{}
+	}
+
+	for _, f := range newFilalizers {
+		if _, ok := finalizerMap[f]; !ok {
+			finalizers = append(finalizers, f)
+		}
+	}
+	obj.SetFinalizers(finalizers)
+}
+
 func removeFinalizer(obj metav1.Object) {
 	finalizers := obj.GetFinalizers()
 	for i, f := range finalizers {
