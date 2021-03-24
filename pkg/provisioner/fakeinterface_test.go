@@ -59,3 +59,11 @@ func (p *fakeProvisioner) Revoke(ob *v1alpha1.ObjectBucket) (err error) {
 	}
 	return err
 }
+
+// Update provides a simple method for testing purposes
+func (p *fakeProvisioner) Update(ob *v1alpha1.ObjectBucket) (err error) {
+	if ob == nil {
+		err = fmt.Errorf("got nil object bucket pointer")
+	}
+	return err
+}

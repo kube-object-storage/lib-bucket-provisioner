@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -99,6 +100,11 @@ func NewController(provisionerName string, provisioner api.Provisioner, clientse
 			if newObc.ObjectMeta.DeletionTimestamp != nil && oldObc.ObjectMeta.DeletionTimestamp != nil {
 				return
 			}
+
+			if !updateSupported(oldObc, newObc) {
+				return
+			}
+
 			// handle this update
 			ctrl.enqueueOBC(new)
 		},
@@ -117,7 +123,7 @@ func (c *obcController) Start(stopCh <-chan struct{}) error {
 	defer c.queue.ShutDown()
 
 	if !cache.WaitForCacheSync(stopCh, c.obcHasSynced, c.obHasSynced) {
-		return fmt.Errorf("failed to waith for caches to sync ")
+		return fmt.Errorf("failed to wait for caches to sync ")
 	}
 	count := 1
 	if threadiness, set := os.LookupEnv("LIB_BUCKET_PROVISIONER_THREADS"); set {
@@ -241,13 +247,17 @@ func (c *obcController) syncHandler(key string) error {
 		return c.handleDeleteClaim(key, obc)
 	}
 
+	// ***********************
+	// Update Events on Bucket
+	// ***********************
+	if !shouldProvision(obc) {
+		log.Info("updating OBC")
+		return c.handleUpdateClaim(key, obc, class)
+	}
+
 	// *******************************************************
 	// Provision New Bucket or Grant Access to Existing Bucket
 	// *******************************************************
-	if !shouldProvision(obc) {
-		log.Info("skipping provision")
-		return nil
-	}
 
 	// update the OBC's status to pending before any provisioning related errors can occur
 	obc, err = updateObjectBucketClaimPhase(
@@ -637,4 +647,63 @@ func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBuc
 		return nil, err
 	}
 	return ob, nil
+}
+
+func updateSupported(old, new *v1alpha1.ObjectBucketClaim) bool {
+	// The only field supported for update is obc.spec.additionalConfig
+	if reflect.DeepEqual(new.Spec, old.Spec) {
+		return false
+	}
+	// create copy of old spec, and set the new spec's additionalConfig on it
+	oldspec := old.Spec.DeepCopy()
+	overwriteAdditionalConfig(new.Spec.AdditionalConfig, oldspec.AdditionalConfig)
+	if !reflect.DeepEqual(*oldspec, new.Spec) {
+		// new OBC spec has changed something other than additionalConfig
+		log.Error(nil, "invalid changes to OBC. only additionalConfig can be updated")
+		return false
+	}
+	return true
+}
+
+func (c *obcController) handleUpdateClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
+	ob, err := getObjectBucketFromClaimKey(key, obc, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout)
+	if err != nil {
+		log.Error(err, "getting ob failed", "key", key)
+		return err
+	}
+
+	log.Info("Additional config changed, hence updating OB")
+	tmp := make(map[string]string)
+
+	overwriteAdditionalConfig(ob.Spec.Endpoint.AdditionalConfigData, tmp)
+	overwriteAdditionalConfig(obc.Spec.AdditionalConfig, ob.Spec.Endpoint.AdditionalConfigData)
+	err = c.provisioner.Update(ob)
+	if err != nil {
+		log.Error(err, "updating from Provisioner failed")
+		return err
+	}
+
+	err = wait.PollImmediate(defaultRetryTimeout, defaultRetryBaseInterval, func() (done bool, err error) {
+		_, err = updateObjectBucket(ob, c.libClientset)
+		if err != nil {
+			log.Error(err, "updating OB failed, retrying...")
+			return false, err
+		}
+		return true, nil
+	})
+	if err != nil {
+		log.Error(err, "updating OB failed, reverting provisioner to original value")
+		overwriteAdditionalConfig(tmp, ob.Spec.Endpoint.AdditionalConfigData)
+		err = c.provisioner.Update(ob)
+	}
+	return err
+}
+
+func overwriteAdditionalConfig(srcAdditionalConfig, destAdditionalConfig map[string]string) {
+	for key, _ := range destAdditionalConfig {
+		delete(destAdditionalConfig, key)
+	}
+	for key, value := range srcAdditionalConfig {
+		destAdditionalConfig[key] = value
+	}
 }
