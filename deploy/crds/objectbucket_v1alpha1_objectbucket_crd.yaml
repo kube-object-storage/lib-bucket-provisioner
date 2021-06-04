@@ -96,6 +96,7 @@ spec:
                 subRegion:
                   description: Bucket sub-region
                   type: string
+                  nullable: true
                 additionalConfig:
                   description: AdditionalConfig gives providers a location to set
                     proprietary config values (tenant, namespace, etc)
