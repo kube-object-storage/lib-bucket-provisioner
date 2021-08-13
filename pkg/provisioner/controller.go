@@ -650,6 +650,13 @@ func (c *obcController) objectBucketForClaimKey(key string) (*v1alpha1.ObjectBuc
 }
 
 func updateSupported(old, new *v1alpha1.ObjectBucketClaim) bool {
+
+	// Deletiong stamp is set, so return true so that it will be added
+	// to queue for deletion
+	if new.ObjectMeta.DeletionTimestamp != nil {
+		return true
+	}
+
 	// The only field supported for update is obc.spec.additionalConfig
 	if reflect.DeepEqual(new.Spec, old.Spec) {
 		return false
