@@ -17,8 +17,10 @@ limitations under the License.
 package provisioner
 
 import (
+	"context"
 	"flag"
 	"time"
+
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -124,6 +126,24 @@ func (p *Provisioner) Run(stopCh <-chan struct{}) (err error) {
 	}()
 	<-stopCh
 	return
+}
+
+func (p *Provisioner) RunWithContext(context context.Context) (err error) {
+	stopCh := make(chan struct{})
+
+	defer klog.Flush()
+	log.Info("starting provisioner", "name", p.Name)
+
+	p.informerFactory.Start(stopCh)
+
+	go func() {
+		err = p.claimController.Start(stopCh)
+	}()
+
+	<-context.Done()
+	close(stopCh)
+	log.Info("stopping provisioner", "name", p.Name, "reason", context.Err())
+	return nil
 }
 
 // setupInformerFactory generates an informer factory scoped to the given namespace if provided or
