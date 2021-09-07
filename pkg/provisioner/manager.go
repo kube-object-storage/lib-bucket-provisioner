@@ -140,10 +140,14 @@ func (p *Provisioner) RunWithContext(context context.Context) (err error) {
 		err = p.claimController.Start(stopCh)
 	}()
 
-	<-context.Done()
-	close(stopCh)
-	log.Info("stopping provisioner", "name", p.Name, "reason", context.Err())
-	return nil
+	select {
+	case <-stopCh:
+		return err
+	case <-context.Done():
+		close(stopCh)
+		log.Info("stopping provisioner", "name", p.Name, "reason", context.Err())
+		return nil
+	}
 }
 
 // setupInformerFactory generates an informer factory scoped to the given namespace if provided or
