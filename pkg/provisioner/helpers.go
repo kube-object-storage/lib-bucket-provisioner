@@ -197,7 +197,7 @@ const (
 )
 
 func generateBucketName(prefix string) string {
-	if len(prefix) > maxBaseNameLen {
+	if len(prefix) >= maxBaseNameLen {
 		prefix = prefix[:maxBaseNameLen-1]
 	}
 	return fmt.Sprintf("%s-%s", prefix, uuid.New())
