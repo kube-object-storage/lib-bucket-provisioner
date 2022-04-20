@@ -24,8 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/klog"
-	"k8s.io/klog/klogr"
+	klog "k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
 	informers "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions"
