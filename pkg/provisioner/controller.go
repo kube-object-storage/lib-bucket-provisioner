@@ -663,7 +663,7 @@ func updateSupported(old, new *v1alpha1.ObjectBucketClaim) bool {
 	}
 	// create copy of old spec, and set the new spec's additionalConfig on it
 	oldspec := old.Spec.DeepCopy()
-	overwriteAdditionalConfig(new.Spec.AdditionalConfig, oldspec.AdditionalConfig)
+	oldspec.AdditionalConfig = new.Spec.AdditionalConfig
 	if !reflect.DeepEqual(*oldspec, new.Spec) {
 		// new OBC spec has changed something other than additionalConfig
 		log.Error(nil, "invalid changes to OBC. only additionalConfig can be updated")
@@ -680,10 +680,9 @@ func (c *obcController) handleUpdateClaim(key string, obc *v1alpha1.ObjectBucket
 	}
 
 	log.Info("Additional config changed, hence updating OB")
-	tmp := make(map[string]string)
+	tmp := copyConfig(ob.Spec.Endpoint.AdditionalConfigData)
 
-	overwriteAdditionalConfig(ob.Spec.Endpoint.AdditionalConfigData, tmp)
-	overwriteAdditionalConfig(obc.Spec.AdditionalConfig, ob.Spec.Endpoint.AdditionalConfigData)
+	ob.Spec.Endpoint.AdditionalConfigData = copyConfig(obc.Spec.AdditionalConfig)
 	err = c.provisioner.Update(ob)
 	if err != nil {
 		log.Error(err, "updating from Provisioner failed")
@@ -700,17 +699,19 @@ func (c *obcController) handleUpdateClaim(key string, obc *v1alpha1.ObjectBucket
 	})
 	if err != nil {
 		log.Error(err, "updating OB failed, reverting provisioner to original value")
-		overwriteAdditionalConfig(tmp, ob.Spec.Endpoint.AdditionalConfigData)
+		ob.Spec.Endpoint.AdditionalConfigData = copyConfig(tmp)
 		err = c.provisioner.Update(ob)
 	}
 	return err
 }
 
-func overwriteAdditionalConfig(srcAdditionalConfig, destAdditionalConfig map[string]string) {
-	for key, _ := range destAdditionalConfig {
-		delete(destAdditionalConfig, key)
+func copyConfig(srcConfig map[string]string) map[string]string {
+	if srcConfig == nil {
+		return make(map[string]string)
 	}
-	for key, value := range srcAdditionalConfig {
-		destAdditionalConfig[key] = value
+	copyConfig := make(map[string]string)
+	for key, value := range srcConfig {
+		copyConfig[key] = value
 	}
+	return copyConfig
 }
