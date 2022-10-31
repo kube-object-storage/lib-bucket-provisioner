@@ -27,7 +27,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/clientset/versioned"
@@ -113,227 +112,69 @@ func newCredentialsSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authen
 	return secret, nil
 }
 
-// createObjectBucket creates an OB based on the passed-in ob spec.
-// Note: a finalizer has been added to reduce chances of the ob being accidentally deleted.
-func createObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface, retryInterval, retryTimeout time.Duration) (result *v1alpha1.ObjectBucket, err error) {
+func createOrUpdateObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) (result *v1alpha1.ObjectBucket, err error) {
 	logD.Info("creating ObjectBucket", "name", ob.Name)
 
 	result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Create(context.TODO(), ob, metav1.CreateOptions{})
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
-			// return input ob here since result is nil on error returns
-			return ob, nil
+			logD.Info("updating ObjectBucket", "name", ob.Name)
+			var currentOB *v1alpha1.ObjectBucket
+			currentOB, err = c.ObjectbucketV1alpha1().ObjectBuckets().Get(context.TODO(), ob.Name, metav1.GetOptions{})
+			if err != nil {
+				return ob, fmt.Errorf("failed to update OB %s: failed to get current version of OB: %v", ob.Name, err)
+			}
+			ob.ResourceVersion = currentOB.ResourceVersion // this must be set for updates
+			result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Update(context.TODO(), ob, metav1.UpdateOptions{})
+			if err != nil {
+				// return input ob here since result is nil on error returns
+				return ob, fmt.Errorf("failed to update OB %s: %v", ob.Name, err)
+			}
+			return result, nil
 		}
+		// return input ob here since result is nil on error returns
 		return ob, fmt.Errorf("failed to create OB %s: %v", ob.Name, err)
 	}
+
 	return result, err
 }
 
-func updateObjectBucket(ob *v1alpha1.ObjectBucket, c versioned.Interface) (result *v1alpha1.ObjectBucket, err error) {
-	logD.Info("updating ObjectBucket", "name", ob.Name)
-	result, err = c.ObjectbucketV1alpha1().ObjectBuckets().Update(context.TODO(), ob, metav1.UpdateOptions{})
-	if err != nil {
-		// return input ob here since result is nil on error returns
-		return ob, fmt.Errorf("failed to update OB %s: %v", ob.Name, err)
-	}
-	return result, err
-}
-
-func getObjectBucketFromClaimKey(key string, obc *v1alpha1.ObjectBucketClaim, c versioned.Interface, retryInterval, retryTimeout time.Duration) (ob *v1alpha1.ObjectBucket, err error) {
-	obName, err := objectBucketNameFromClaimKey(key)
-	if err != nil {
-		return nil, err
-	}
-
-	logD.Info("seeing if OB for OBC exists", "checking for OB name", obName)
-	ob, err = c.ObjectbucketV1alpha1().ObjectBuckets().Get(context.TODO(), obName, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Not found is a valid exit here which returns no error and a nil result
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	if bucketIsOwnedByClaim(obc, ob) {
-		logD.Info("found OB belonging to this OBC", "OB", ob.Name)
-		return ob, err
-	}
-
-	emptyRef := corev1.ObjectReference{}
-	if ob.Spec.ClaimRef == nil || *ob.Spec.ClaimRef == emptyRef {
-		// If the CRD validation for the OB improperly specifies the object reference field, it will
-		// be missing. Do our best to recover from this case gracefully.
-		logD.Info("found OB matching OBC, but the OB ClaimRef is empty. binding OB to OBC", "OB", ob.Name)
-		ob.Spec.ClaimRef, err = claimRefForKey(key, c)
-		if err != nil {
-			return nil, fmt.Errorf("error generating OB %q's reference to OBC: %v", ob.Name, err)
-		}
-		ob, err = updateObjectBucket(ob, c)
-		if err != nil {
-			return nil, fmt.Errorf("error updating OB %q with assumed claim ref: %v", ob.Name, err)
-		}
-		return ob, err
-	}
-
-	return nil, fmt.Errorf("found OB %q not owned by OBC %q, likely an artifact from a previous OBC that did not get cleaned up, user must delete the OB in order to allow OBC provisioning to continue", ob.Name, key)
-}
-
-func createSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, labels map[string]string, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.Secret, error) {
+func createOrUpdateSecret(obc *v1alpha1.ObjectBucketClaim, auth *v1alpha1.Authentication, labels map[string]string, c kubernetes.Interface) error {
 	secret, err := newCredentialsSecret(obc, auth, labels)
-	if err != nil {
-		return nil, err
-	}
-	logD.Info("creating Secret", "name", secret.Namespace+"/"+secret.Name)
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		secret, err = c.CoreV1().Secrets(obc.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				// The object already exists don't spam the logs, instead let the request be requeued
-				return true, err
-			}
-			// The error could be intermittent, log and try again
-			log.Error(err, "probably not fatal, retrying")
-			return false, nil
-		}
-		return true, nil
-	})
-	return secret, err
-}
-
-func createConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, labels map[string]string, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (*corev1.ConfigMap, error) {
-	configMap, err := newBucketConfigMap(obc, ep, labels)
-	if err != nil {
-		return nil, err
-	}
-
-	logD.Info("creating ConfigMap", "name", configMap.Namespace+"/"+configMap.Name)
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(context.TODO(), configMap, metav1.CreateOptions{})
-		if err != nil {
-			if errors.IsAlreadyExists(err) {
-				// The object already exists don't spam the logs, instead let the request be requeued
-				return true, err
-			}
-			// The error could be intermittent, log and try again
-			log.Error(err, "probably not fatal, retrying")
-			return false, nil
-		}
-		return true, nil
-	})
-	return configMap, err
-}
-
-func deleteExistingSecretAndConfigMapIfExist(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
-
-	secret, err := getExistingSecret(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("error checking for existing OBC credentials Secret: %v", err)
-	}
-	if secret != nil {
-		if !objectIsOwnedByClaim(obc, secret.OwnerReferences) {
-			return fmt.Errorf("found OBC credentials Secret %q not owned by OBC, assuming this is a user-created resource, user must delete the Secret in order to allow OBC provisioning to continue", secret.Name)
-		}
-		logD.Info("found OBC credentials Secret owned by OBC, deleting and re-creating")
-		err = deleteSecretAndWait(secret, c, defaultRetryBaseInterval, defaultRetryTimeout)
-		if err != nil {
-			return fmt.Errorf("failed to delete existing OBC credentials Secret in order to re-create: %v", err)
-		}
-	}
-
-	configMap, err := getExistingConfigMap(obc, c, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("error checking for existing OBC bucket info ConfigMap: %v", err)
-	}
-	if configMap != nil {
-		if !objectIsOwnedByClaim(obc, configMap.OwnerReferences) {
-			return fmt.Errorf("found OBC bucket info ConfigMap %q not owned by OBC, assuming this is a user-created resource, user must delete the ConfigMap in order to allow OBC provisioning to continue", configMap.Name)
-		}
-		logD.Info("found OBC bucket info ConfigMap owned by OBC, deleting and re-creating")
-		err = deleteConfigMapAndWait(configMap, c, defaultRetryBaseInterval, defaultRetryTimeout)
-		if err != nil {
-			return fmt.Errorf("failed to delete existing OBC bucket info ConfigMap in order to re-create: %v", err)
-		}
-	}
-
-	return nil
-}
-
-func getExistingSecret(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (secret *corev1.Secret, err error) {
-	secret, err = c.CoreV1().Secrets(obc.Namespace).Get(context.TODO(), composeSecretName(obc), metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Not found is valid here which returns no error and a nil secret
-			return nil, nil
-		}
-		return nil, err
-	}
-	return secret, err
-}
-
-func getExistingConfigMap(obc *v1alpha1.ObjectBucketClaim, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) (configMap *corev1.ConfigMap, err error) {
-	configMap, err = c.CoreV1().ConfigMaps(obc.Namespace).Get(context.TODO(), composeConfigMapName(obc), metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			// Not found is valid here which returns no error and a nil configMap
-			return nil, nil
-		}
-		return nil, err
-	}
-	return configMap, err
-}
-
-func deleteSecretAndWait(sec *corev1.Secret, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
-	logD.Info("deleting secret", "secret name", sec.Name)
-
-	err := releaseSecret(sec, c)
-	if err != nil {
-		return fmt.Errorf("failed to release secret for deletion: %v", err)
-	}
-	err = c.CoreV1().Secrets(sec.Namespace).Delete(context.TODO(), sec.Name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		_, err = c.CoreV1().Secrets(sec.Namespace).Get(context.TODO(), sec.Name, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				// Is Deleted
-				err = nil
-				return true, nil
+	logD.Info("creating Secret", "name", secret.Namespace+"/"+secret.Name)
+	_, err = c.CoreV1().Secrets(obc.Namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			logD.Info("updating Secret", "name", secret.Namespace+"/"+secret.Name)
+			_, err = c.CoreV1().Secrets(obc.Namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to update secret %q for obc %q", secret.Namespace+"/"+secret.Name, obc.Name)
 			}
-			// for other errors, give the opportunity to retry until timeout
-			return false, nil
 		}
-		return false, nil // still exists
-	})
+	}
 	return err
 }
 
-func deleteConfigMapAndWait(cm *corev1.ConfigMap, c kubernetes.Interface, retryInterval, retryTimeout time.Duration) error {
-	logD.Info("deleting configmap", "configmap name", cm.Name)
-
-	err := releaseConfigMap(cm, c)
-	if err != nil {
-		return fmt.Errorf("failed to release ConfigMap for deletion: %v", err)
-	}
-	err = c.CoreV1().ConfigMaps(cm.Namespace).Delete(context.TODO(), cm.Name, metav1.DeleteOptions{})
+func createOrUpdateConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, labels map[string]string, c kubernetes.Interface) error {
+	configMap, err := newBucketConfigMap(obc, ep, labels)
 	if err != nil {
 		return err
 	}
-	err = wait.PollImmediate(retryInterval, retryTimeout, func() (done bool, err error) {
-		_, err = c.CoreV1().ConfigMaps(cm.Namespace).Get(context.TODO(), cm.Name, metav1.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				// Is Deleted
-				err = nil
-				return true, nil
+
+	logD.Info("creating ConfigMap", "name", configMap.Namespace+"/"+configMap.Name)
+	_, err = c.CoreV1().ConfigMaps(obc.Namespace).Create(context.TODO(), configMap, metav1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			logD.Info("updating ConfigMap", "name", configMap.Namespace+"/"+configMap.Name)
+			_, err = c.CoreV1().ConfigMaps(obc.Namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to update configmap %q for obc %q", configMap.Namespace+"/"+configMap.Name, obc.Name)
 			}
-			// for other errors, give the opportunity to retry until timeout
-			return false, nil
 		}
-		return false, nil // still exists
-	})
+	}
 	return err
 }
 
@@ -473,4 +314,43 @@ func updateObjectBucketPhase(c versioned.Interface, ob *v1alpha1.ObjectBucket, p
 		return ob, fmt.Errorf("failed to update OB %s phase to %q: %v", ob.Name, phase, err)
 	}
 	return result, err
+}
+
+// get OB from key, or nil if no OB exists
+func getObFromKey(key string, c versioned.Interface) (*v1alpha1.ObjectBucket, error) {
+	obName, err := objectBucketNameFromClaimKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ob for key %q: %v", key, err)
+	}
+
+	ob, err := c.ObjectbucketV1alpha1().ObjectBuckets().Get(context.TODO(), obName, metav1.GetOptions{})
+	if err != nil {
+		// no error in this case because there is no OB which contains information, meaning we
+		// are free to provision the OBC however it is configured
+		if errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get ob %q: %v", obName, err)
+	}
+
+	return ob, nil
+}
+
+// throw error if obc config is different from the ob
+// accepts nil ob
+func errIfObcConfigHasBeenModified(ob *v1alpha1.ObjectBucket, obc *v1alpha1.ObjectBucketClaim) error {
+	if ob == nil {
+		// no error in this case because the OB hasn't yet been created to go along with the OBC
+		return nil
+	}
+
+	if obc.Spec.BucketName != ob.Spec.Endpoint.BucketName {
+		return fmt.Errorf("obc %q bucketName has changed compared to ob %q", obc.Name, ob.Name)
+	}
+	// actually don't care if generateBucketName changes since the bucketName is what really matters
+	if obc.Spec.StorageClassName != ob.Spec.StorageClassName {
+		return fmt.Errorf("obc %q storageClassName has changed compared to ob %q", obc.Name, ob.Name)
+	}
+
+	return nil
 }

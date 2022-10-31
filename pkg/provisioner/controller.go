@@ -40,7 +40,6 @@ import (
 	informers "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/informers/externalversions/objectbucket.io/v1alpha1"
 	listers "github.com/kube-object-storage/lib-bucket-provisioner/pkg/client/listers/objectbucket.io/v1alpha1"
 	"github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api"
-	pErr "github.com/kube-object-storage/lib-bucket-provisioner/pkg/provisioner/api/errors"
 )
 
 type controller interface {
@@ -210,8 +209,8 @@ func (c *obcController) processNextItemInQueue() bool {
 // Reconcile implements the Reconciler interface. This function contains the business logic
 // of the OBC obcController.
 // Note: the obc obtained from the key is not expected to be nil. In other words, this func is
-//   not called when informers detect an object is missing and trigger a formal delete event.
-//   Instead, delete is indicated by the deletionTimestamp being non-nil on an update event.
+// not called when informers detect an object is missing and trigger a formal delete event.
+// Instead, delete is indicated by the deletionTimestamp being non-nil on an update event.
 func (c *obcController) syncHandler(key string) error {
 
 	setLoggersWithRequest(key)
@@ -247,28 +246,18 @@ func (c *obcController) syncHandler(key string) error {
 		return c.handleDeleteClaim(key, obc)
 	}
 
-	// ***********************
-	// Update Events on Bucket
-	// ***********************
-	if !shouldProvision(obc) {
-		log.Info("updating OBC")
-		return c.handleUpdateClaim(key, obc, class)
+	if obc.Status.Phase == "" {
+		// update the OBC's status to pending before any provisioning related errors can occur
+		obc, err = updateObjectBucketClaimPhase(
+			c.libClientset,
+			obc,
+			v1alpha1.ObjectBucketClaimStatusPhasePending)
+		if err != nil {
+			return fmt.Errorf("error updating OBC status: %s", err)
+		}
 	}
 
-	// *******************************************************
-	// Provision New Bucket or Grant Access to Existing Bucket
-	// *******************************************************
-
-	// update the OBC's status to pending before any provisioning related errors can occur
-	obc, err = updateObjectBucketClaimPhase(
-		c.libClientset,
-		obc,
-		v1alpha1.ObjectBucketClaimStatusPhasePending)
-	if err != nil {
-		return fmt.Errorf("error updating OBC status: %s", err)
-	}
-
-	// By now, we should know that the OBC matches our provisioner, lacks an OB, and thus requires provisioning
+	// idempotent provisioner
 	err = c.handleProvisionClaim(key, obc, class)
 
 	// If the handler above errors, the request will be re-queued. In the distant future, we will
@@ -276,21 +265,28 @@ func (c *obcController) syncHandler(key string) error {
 	return err
 }
 
-// handleProvision is an extraction of the core provisioning process in order to defer clean up
-// on a provisioning failure
 func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
 
 	log.Info("syncing obc creation")
 
 	var (
-		ob        *v1alpha1.ObjectBucket
-		secret    *corev1.Secret
-		configMap *corev1.ConfigMap
-		err       error
+		ob  *v1alpha1.ObjectBucket
+		err error
 	)
 
 	// set finalizer in OBC so that resources cleaned up is controlled when the obc is deleted
 	if obc, err = c.setOBCMetaFields(obc); err != nil {
+		return err
+	}
+
+	ob, err = getObFromKey(key, c.libClientset) // ob may be nil here
+	if err != nil {
+		return fmt.Errorf("failed to find ob associated with obc %q", obc.Name)
+	}
+
+	// on an operator restart, the event will be an add event, and we should check if the obc has
+	// been updated in comparison to the ob, since we don't have an old OBC to compare to
+	if err = errIfObcConfigHasBeenModified(ob, obc); err != nil {
 		return err
 	}
 
@@ -325,79 +321,18 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		}
 	}
 
-	updateOnSuccess := func() error {
-		// In the case where the OB has been created and the operator crashed immediately after
-		// (before the OB phase could be updated), we should update the OB phase in addition to
-		// updating the OBC reference to the OB and the OBC's phase.
-		ob, err = updateObjectBucketPhase(
-			c.libClientset,
-			ob,
-			v1alpha1.ObjectBucketStatusPhaseBound)
-		if err != nil {
-			return fmt.Errorf("error updating OB %q's status to %q: %v", ob.Name, v1alpha1.ObjectBucketStatusPhaseBound, err)
-		}
-		// update OBC
-		obc.Spec.ObjectBucketName = ob.Name
-		obc.Spec.BucketName = bucketName
-		obc, err = updateClaim(
-			c.libClientset,
-			obc)
-		if err != nil {
-			return fmt.Errorf("error updating OBC: %v", err)
-		}
-		obc, err = updateObjectBucketClaimPhase(
-			c.libClientset,
-			obc,
-			v1alpha1.ObjectBucketClaimStatusPhaseBound)
-		if err != nil {
-			return fmt.Errorf("error updating OBC %q's status to: %v", v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
-		}
-		return nil
-	}
-
-	// recover from degraded state where provisioning is happening again on a completed obc
-	ob, err = getObjectBucketFromClaimKey(key, obc, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout)
+	userID, err := c.provisioner.GenerateUserID(obc, ob)
 	if err != nil {
-		return fmt.Errorf("error getting OB for OBC %q: %v", key, err)
-	}
-	if ob != nil {
-		err = updateOnSuccess()
-		if err != nil {
-			return fmt.Errorf("error marking OB %q as bound to OBC %q: %v", ob.Name, key, err)
-		}
-		// Do not do any more provisioning; the bucket is already provisioned and merely
-		// needed its info re-updated to reference the claim and vice versa
-		logD.Info("(re-)bound OB to OBC successfully", "OB", ob.Name)
-		return nil
+		return fmt.Errorf("failed to generate user id for use as idempotency key: %v", err)
 	}
 
 	options := &api.BucketOptions{
 		ReclaimPolicy:     class.ReclaimPolicy,
 		BucketName:        bucketName,
+		UserID:            userID,
 		ObjectBucketClaim: obc.DeepCopy(),
 		Parameters:        class.Parameters,
 	}
-
-	// Should an error be returned, attempt to clean up the object store and API servers by
-	// calling the appropriate provisioner method.  In cases where Provision() or Revoke()
-	// return an err, it's likely that the ob == nil, hindering cleanup.
-	defer func() {
-		if err != nil && ob != nil {
-			log.Info("cleaning up provisioning artifacts")
-			if /*greenfield*/ isDynamicProvisioning && !pErr.IsBucketExists(err) {
-				log.Info("deleting provisioned resources")
-				if dErr := c.provisioner.Delete(ob); dErr != nil {
-					log.Error(dErr, "could not delete provisioned resources")
-				}
-			} else /*brownfield*/ {
-				log.Info("revoking access")
-				if dErr := c.provisioner.Revoke(ob); dErr != nil {
-					log.Error(err, "could not revoke access")
-				}
-			}
-			_ = c.deleteResources(ob, configMap, secret, nil)
-		}
-	}()
 
 	verb := "provisioning"
 	if !isDynamicProvisioning {
@@ -410,27 +345,10 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	} else {
 		ob, err = c.provisioner.Grant(options)
 	}
-	// Record whether the provisioner returned an empty object bucket for error handling use later
+
 	// The k8s code generator does not generate equality methods, and golang's native
 	// reflect.DeepEqual panics at unexported k8s struct fields, so must use apiequality lib.
 	emptyBucket := (ob == nil || apiequality.Semantic.DeepEqual(*ob, v1alpha1.ObjectBucket{}))
-
-	// Set information about the OB as soon as possible, even before handling errors so that the
-	// deferred cleanup function is not missing critical information needed to clean up.
-	// More note on above: can't check if provisioner returned empty OB after we set OB info below.
-	// The returned OB should only be nil if there is also an error with provisioning; in such a
-	// case, the provisioner should have cleaned up after itself already so we do not need to set
-	// info for OB cleanup.
-	if ob != nil {
-		setObjectBucketName(ob, key)
-		ob.Spec.StorageClassName = obc.Spec.StorageClassName
-		if ob.Spec.ReclaimPolicy == nil || *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimPolicy("") {
-			// Do not blindly overwrite the reclaim policy. The provisioner might have reason to
-			// specify a reclaim policy that is  different from the storage class.
-			ob.Spec.ReclaimPolicy = options.ReclaimPolicy
-		}
-		addLabels(ob, c.provisionerLabels)
-	}
 
 	if err != nil {
 		return fmt.Errorf("error %s bucket: %v", verb, err)
@@ -438,65 +356,63 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return fmt.Errorf("provisioner returned empty object bucket")
 	}
 
-	// This info set on the OB isn't critical for cleanup
+	// Create/Update auth secret and endpoint configmap
+	err = createOrUpdateSecret(
+		obc,
+		ob.Spec.Authentication,
+		c.provisionerLabels,
+		c.clientset)
+	if err != nil {
+		return fmt.Errorf("error creating secret for OBC: %v", err)
+	}
+	err = createOrUpdateConfigMap(
+		obc,
+		ob.Spec.Endpoint,
+		c.provisionerLabels,
+		c.clientset)
+	if err != nil {
+		return fmt.Errorf("error creating configmap for OBC: %v", err)
+	}
+
+	// Create/Update OB
+	setObjectBucketName(ob, key)
+	ob.Spec.StorageClassName = obc.Spec.StorageClassName
+	if ob.Spec.ReclaimPolicy == nil || *ob.Spec.ReclaimPolicy == corev1.PersistentVolumeReclaimPolicy("") {
+		// Do not blindly overwrite the reclaim policy. The provisioner might have reason to
+		// specify a reclaim policy that is  different from the storage class.
+		ob.Spec.ReclaimPolicy = options.ReclaimPolicy
+	}
+	addLabels(ob, c.provisionerLabels)
 	addFinalizers(ob, []string{finalizer})
 	ob.Spec.ClaimRef, err = claimRefForKey(key, c.libClientset)
 	if err != nil {
 		return fmt.Errorf("error getting reference to OBC: %v", err)
 	}
-
-	// Create auth Secret and bucket info ConfigMap
-	// If the operator crashes before the OB is created, provisioning will happen again including a
-	// call to Provision()/Grant(), and a Secret and/or ConfigMap might exist from the previous
-	// provisioning attempt. Provision() isn't guaranteed to give the same credentials or bucket
-	// each time, so if the Secret/ConfigMap already exists, delete the old one and re-create it
-	// with the latest info.
-
-	err = deleteExistingSecretAndConfigMapIfExist(obc, c.clientset, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("failed to delete existing Secret and/or ConfigMap for OBC %q: %v", obc.Namespace+"/"+obc.Name, err)
-	}
-
-	secret, err = createSecret(
-		obc,
-		ob.Spec.Authentication,
-		c.provisionerLabels,
-		c.clientset,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("error creating secret for OBC: %v", err)
-	}
-
-	configMap, err = createConfigMap(
-		obc,
-		ob.Spec.Endpoint,
-		c.provisionerLabels,
-		c.clientset,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
-	if err != nil {
-		return fmt.Errorf("error creating configmap for OBC: %v", err)
-	}
-
-	// Create OB
-	// Note: do not move ob create/update calls before secret.
-	//   spec.Authentication is lost after create/update, which breaks secret creation
-	ob, err = createObjectBucket(
+	ob.Status.Phase = v1alpha1.ObjectBucketStatusPhaseBound
+	ob, err = createOrUpdateObjectBucket(
 		ob,
+		c.libClientset)
+	if err != nil {
+		return fmt.Errorf("error creating or updating OB %q: %v", ob.Name, err)
+	}
+
+	// update OBC
+	obc.Spec.ObjectBucketName = ob.Name
+	obc.Spec.BucketName = bucketName
+	obc, err = updateClaim(
 		c.libClientset,
-		defaultRetryBaseInterval,
-		defaultRetryTimeout)
+		obc)
 	if err != nil {
-		return fmt.Errorf("error creating OB %q: %v", ob.Name, err)
+		return fmt.Errorf("error updating OBC: %v", err)
+	}
+	obc, err = updateObjectBucketClaimPhase(
+		c.libClientset,
+		obc,
+		v1alpha1.ObjectBucketClaimStatusPhaseBound)
+	if err != nil {
+		return fmt.Errorf("error updating OBC %q's status to %q: %v", obc.Name, v1alpha1.ObjectBucketClaimStatusPhaseBound, err)
 	}
 
-	err = updateOnSuccess()
-	if err != nil {
-		return fmt.Errorf("error marking new OB %q as bound to OBC %q: %v", ob.Name, key, err)
-	}
-
-	log.Info("provisioning succeeded")
 	return nil
 }
 
@@ -670,48 +586,4 @@ func updateSupported(old, new *v1alpha1.ObjectBucketClaim) bool {
 		return false
 	}
 	return true
-}
-
-func (c *obcController) handleUpdateClaim(key string, obc *v1alpha1.ObjectBucketClaim, class *storagev1.StorageClass) error {
-	ob, err := getObjectBucketFromClaimKey(key, obc, c.libClientset, defaultRetryBaseInterval, defaultRetryTimeout)
-	if err != nil {
-		log.Error(err, "getting ob failed", "key", key)
-		return err
-	}
-
-	log.Info("Additional config changed, hence updating OB")
-	tmp := copyConfig(ob.Spec.Endpoint.AdditionalConfigData)
-
-	ob.Spec.Endpoint.AdditionalConfigData = copyConfig(obc.Spec.AdditionalConfig)
-	err = c.provisioner.Update(ob)
-	if err != nil {
-		log.Error(err, "updating from Provisioner failed")
-		return err
-	}
-
-	err = wait.PollImmediate(defaultRetryTimeout, defaultRetryBaseInterval, func() (done bool, err error) {
-		_, err = updateObjectBucket(ob, c.libClientset)
-		if err != nil {
-			log.Error(err, "updating OB failed, retrying...")
-			return false, err
-		}
-		return true, nil
-	})
-	if err != nil {
-		log.Error(err, "updating OB failed, reverting provisioner to original value")
-		ob.Spec.Endpoint.AdditionalConfigData = copyConfig(tmp)
-		err = c.provisioner.Update(ob)
-	}
-	return err
-}
-
-func copyConfig(srcConfig map[string]string) map[string]string {
-	if srcConfig == nil {
-		return make(map[string]string)
-	}
-	copyConfig := make(map[string]string)
-	for key, value := range srcConfig {
-		copyConfig[key] = value
-	}
-	return copyConfig
 }
