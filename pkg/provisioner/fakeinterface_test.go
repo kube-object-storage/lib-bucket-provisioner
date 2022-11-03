@@ -28,6 +28,13 @@ type fakeProvisioner struct{}
 
 var _ api.Provisioner = &fakeProvisioner{}
 
+func (p *fakeProvisioner) GenerateUserID(obc *v1alpha1.ObjectBucketClaim, ob *v1alpha1.ObjectBucket) (string, error) {
+	if obc == nil {
+		return "", fmt.Errorf("got nil ptr")
+	}
+	return "fake-obc-" + obc.Namespace + "-" + obc.Name, nil
+}
+
 // Provision provides a simple method for testing purposes
 func (p *fakeProvisioner) Provision(options *api.BucketOptions) (*v1alpha1.ObjectBucket, error) {
 	if options == nil || options.ObjectBucketClaim == nil {
@@ -54,14 +61,6 @@ func (p *fakeProvisioner) Delete(ob *v1alpha1.ObjectBucket) (err error) {
 
 // Revoke provides a simple method for testing purposes
 func (p *fakeProvisioner) Revoke(ob *v1alpha1.ObjectBucket) (err error) {
-	if ob == nil {
-		err = fmt.Errorf("got nil object bucket pointer")
-	}
-	return err
-}
-
-// Update provides a simple method for testing purposes
-func (p *fakeProvisioner) Update(ob *v1alpha1.ObjectBucket) (err error) {
 	if ob == nil {
 		err = fmt.Errorf("got nil object bucket pointer")
 	}
