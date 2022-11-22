@@ -388,12 +388,18 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	if err != nil {
 		return fmt.Errorf("error getting reference to OBC: %v", err)
 	}
-	ob.Status.Phase = v1alpha1.ObjectBucketStatusPhaseBound
 	ob, err = createOrUpdateObjectBucket(
 		ob,
 		c.libClientset)
 	if err != nil {
 		return fmt.Errorf("error creating or updating OB %q: %v", ob.Name, err)
+	}
+
+	// Status must be set/updated separately from OB spec
+	ob.Status.Phase = v1alpha1.ObjectBucketStatusPhaseBound
+	ob, err = c.libClientset.ObjectbucketV1alpha1().ObjectBuckets().UpdateStatus(context.TODO(), ob, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("error updating OB %q status to %q", ob.Name, ob.Status.Phase)
 	}
 
 	// update OBC
