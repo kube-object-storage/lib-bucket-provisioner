@@ -134,6 +134,7 @@ type ObjectBucketStatus struct {
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:openapi-gen=true
+// +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,shortName=ob;obs
 // +kubebuilder:printcolumn:name="StorageClass",type="string",JSONPath=".spec.storageClassName",description="StorageClass"
 // +kubebuilder:printcolumn:name="ClaimNamespace",type="string",JSONPath=".spec.claimRef.namespace",description="ClaimNamespace"
