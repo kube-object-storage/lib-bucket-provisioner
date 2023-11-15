@@ -404,7 +404,8 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 
 	// update OBC
 	obc.Spec.ObjectBucketName = ob.Name
-	obc.Spec.BucketName = bucketName
+	// Set bucket name from OB, the provisioner might have reason to amend it.
+	obc.Spec.BucketName = ob.Spec.Connection.Endpoint.BucketName
 	obc, err = updateClaim(
 		c.libClientset,
 		obc)
