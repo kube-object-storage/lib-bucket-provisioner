@@ -31,13 +31,15 @@ func ObjectBucketClaimGVK() schema.GroupVersionKind {
 type ObjectBucketClaimSpec struct {
 
 	// StorageClass names the StorageClass object representing the desired provisioner and parameters
-	StorageClassName string `json:"storageClassName"`
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	StorageClassName string `json:"storageClassName,omitempty"`
 
 	// BucketName (not recommended) the name of the bucket.  Caution!
 	// In-store bucket names may collide across namespaces.  If you define
 	// the name yourself, try to make it as unique as possible.
 	// +optional
-	BucketName string `json:"bucketName,omityempty"`
+	BucketName string `json:"bucketName,omitempty"`
 
 	// GenerateBucketName (recommended) a prefix for a bucket name to be
 	// followed by a hyphen and 5 random characters. Protects against
