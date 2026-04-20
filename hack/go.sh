@@ -55,9 +55,11 @@ build(){
     cd "${REPO_ROOT}"
     for p in ${PKGS}; do
       echo "go build'ing package $p"
-      go build -a "${p}"
+      go build -a "${p}" || RET=$?
     done
+    return $RET
   )
+  return $?
 }
 
 test(){
@@ -65,9 +67,11 @@ test(){
   (
     cd "${REPO_ROOT}"
     for p in "${PKGS}"; do
-      go test -v "${p}"
+      go test -v "${p}" || RET=$?
     done
+    return $RET
   )
+  return $?
 }
 
 lint(){
@@ -86,8 +90,9 @@ linters(){
 ci-checks(){
     echo "-------- beginning preflight checks"
     lint
-    test
-    build
+    test || RET=$?
+    build || RET=$?
+    return $RET
 }
 
 help(){
@@ -163,7 +168,7 @@ main(){
       ;;
     "ci-checks")
       ci-checks
-      exit 0
+      exit $?
       ;;
     "linters")
       linters
