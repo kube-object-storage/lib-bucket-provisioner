@@ -284,6 +284,18 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return fmt.Errorf("failed to find ob associated with obc %q", obc.Name)
 	}
 
+	// If ObjectBucket exists but objectBucketName is missing, restore it
+	// Only restore if the OB is in a valid state: Phase is Bound
+	if ob != nil && obc.Spec.ObjectBucketName == "" &&
+		ob.Status.Phase == v1alpha1.ObjectBucketStatusPhaseBound {
+		log.Info("restoring missing objectBucketName in OBC", "obc", obc.Name, "ob", ob.Name)
+		obc.Spec.ObjectBucketName = ob.Name
+		obc, err = updateClaim(c.libClientset, obc)
+		if err != nil {
+			return fmt.Errorf("error restoring objectBucketName in OBC: %v", err)
+		}
+	}
+
 	// on an operator restart, the event will be an add event, and we should check if the obc has
 	// been updated in comparison to the ob, since we don't have an old OBC to compare to
 	if err = errIfObcConfigHasBeenModified(ob, obc); err != nil {
@@ -583,6 +595,14 @@ func updateSupported(old, new *v1alpha1.ObjectBucketClaim) bool {
 	if reflect.DeepEqual(new.Spec, old.Spec) {
 		return false
 	}
+
+	// CRITICAL: Prevent modification of objectBucketName once set
+	if old.Spec.ObjectBucketName != "" && new.Spec.ObjectBucketName != old.Spec.ObjectBucketName {
+		log.Error(nil, "invalid changes to OBC: objectBucketName cannot be modified once set",
+			"old", old.Spec.ObjectBucketName, "new", new.Spec.ObjectBucketName)
+		return false
+	}
+
 	// create copy of old spec, and set the new spec's additionalConfig on it
 	oldspec := old.Spec.DeepCopy()
 	oldspec.AdditionalConfig = new.Spec.AdditionalConfig
