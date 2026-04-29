@@ -63,7 +63,7 @@ func newBucketConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, 
 		return nil, fmt.Errorf("cannot construct configMap, got nil OBC")
 	}
 
-	return &corev1.ConfigMap{
+	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       composeConfigMapName(obc),
 			Namespace:  obc.Namespace,
@@ -80,7 +80,14 @@ func newBucketConfigMap(obc *v1alpha1.ObjectBucketClaim, ep *v1alpha1.Endpoint, 
 			bucketRegion:    ep.Region,
 			bucketSubRegion: ep.SubRegion,
 		},
-	}, nil
+	}
+	// if provided extra config - put it to configmap
+	if len(ep.AdditionalConfigData) > 0 {
+		for k, v := range ep.AdditionalConfigData {
+			cm.Data[k] = v
+		}
+	}
+	return cm, nil
 }
 
 // newCredentialsSecret returns a secret with data appropriate to the supported authenticaion
