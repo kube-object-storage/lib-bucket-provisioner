@@ -272,6 +272,40 @@ func TestNewBucketConfigMap(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "with additional config defined",
+			args: args{
+				ep: &v1alpha1.Endpoint{
+					BucketHost: host,
+					BucketPort: port,
+					BucketName: name,
+					Region:     region,
+					SubRegion:  subRegion,
+					// check extra info passed
+					AdditionalDataConfig: map[string]string{
+						"SOME_ENV_VAR": "SOME_VALUE",
+					},
+				},
+				obc: &v1alpha1.ObjectBucketClaim{
+					ObjectMeta: objMeta,
+					Spec: v1alpha1.ObjectBucketClaimSpec{
+						BucketName: name,
+					},
+				},
+			},
+			want: &corev1.ConfigMap{
+				ObjectMeta: objMeta,
+				Data: map[string]string{
+					bucketName:      name,
+					bucketHost:      host,
+					bucketPort:      strconv.Itoa(port),
+					bucketRegion:    region,
+					bucketSubRegion: subRegion,
+					"SOME_ENV_VAR":  "SOME_VALUE",
+				},
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
