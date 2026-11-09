@@ -38,9 +38,10 @@ type mapper interface {
 // used for brownfield buckets, or the key to create an OB's
 // Authentication{}.
 const (
-	AwsKeyField        = "AWS_ACCESS_KEY_ID"
-	AwsSecretField     = "AWS_SECRET_ACCESS_KEY"
-	StorageClassBucket = "bucketName"
+	AwsKeyField                       = "AWS_ACCESS_KEY_ID"
+	AwsSecretField                    = "AWS_SECRET_ACCESS_KEY"
+	StorageClassBucket                = "bucketName"
+	StorageClassSkipCredentialsSecret = "skipCredentialsSecret"
 )
 
 // AccessKeys is an Authentication type for passing AWS S3 style key pairs from the provisioner to the reconciler

@@ -19,6 +19,7 @@ package provisioner
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -127,6 +128,19 @@ func isNewBucketByObjectBucket(c kubernetes.Interface, ob *v1alpha1.ObjectBucket
 		return false
 	}
 	return len(class.Parameters[v1alpha1.StorageClassBucket]) == 0
+}
+
+// Return true if this storage class opts out of the credentials secret.
+func skipSecretByStorageClass(sc *storagev1.StorageClass) (bool, error) {
+	v, ok := sc.Parameters[v1alpha1.StorageClassSkipCredentialsSecret]
+	if !ok {
+		return false, nil
+	}
+	skip, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("invalid %s parameter in StorageClass %q: %v", v1alpha1.StorageClassSkipCredentialsSecret, sc.Name, err)
+	}
+	return skip, nil
 }
 
 func composeConfigMapName(obc *v1alpha1.ObjectBucketClaim) string {
