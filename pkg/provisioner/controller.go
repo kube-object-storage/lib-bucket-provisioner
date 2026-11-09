@@ -290,6 +290,11 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 		return err
 	}
 
+	skipSecret, err := skipSecretByStorageClass(class)
+	if err != nil {
+		return err
+	}
+
 	// If a storage class contains a non-nil value for the "bucketName" key, it is assumed
 	// to be a Grant request to the given bucket (brownfield).  If the value is nil or the
 	// key is undefined, it is assumed to be a provisioning request.  This allows administrators
@@ -357,13 +362,15 @@ func (c *obcController) handleProvisionClaim(key string, obc *v1alpha1.ObjectBuc
 	}
 
 	// Create/Update auth secret and endpoint configmap
-	err = createOrUpdateSecret(
-		obc,
-		ob.Spec.Authentication,
-		c.provisionerLabels,
-		c.clientset)
-	if err != nil {
-		return fmt.Errorf("error creating secret for OBC: %v", err)
+	if !skipSecret {
+		err = createOrUpdateSecret(
+			obc,
+			ob.Spec.Authentication,
+			c.provisionerLabels,
+			c.clientset)
+		if err != nil {
+			return fmt.Errorf("error creating secret for OBC: %v", err)
+		}
 	}
 	err = createOrUpdateConfigMap(
 		obc,

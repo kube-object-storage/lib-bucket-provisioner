@@ -40,7 +40,18 @@ func (p *fakeProvisioner) Provision(options *api.BucketOptions) (*v1alpha1.Objec
 	if options == nil || options.ObjectBucketClaim == nil {
 		return nil, fmt.Errorf("got nil ptr")
 	}
-	return &v1alpha1.ObjectBucket{}, nil
+	return &v1alpha1.ObjectBucket{
+		Spec: v1alpha1.ObjectBucketSpec{
+			Connection: &v1alpha1.Connection{
+				Endpoint: &v1alpha1.Endpoint{
+					BucketName: options.BucketName,
+				},
+				Authentication: &v1alpha1.Authentication{
+					AccessKeys: &v1alpha1.AccessKeys{},
+				},
+			},
+		},
+	}, nil
 }
 
 // Grant provides a simple method for testing purposes
